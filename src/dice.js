@@ -10,8 +10,9 @@ import { createD8Mesh, createD8Body } from './dice-models/d8.js';
 import { createD10Mesh, createD10Body } from './dice-models/d10.js';
 import { createD12Mesh, createD12Body } from './dice-models/d12.js';
 import { createD20Mesh, createD20Body } from './dice-models/d20.js';
+import { createD100Body, createD100Mesh } from './dice-models/d100.js';
 
-export function createDie(type, visible = true, targetNumber, foundClosestIndex) {
+export function createDie(type, visible = true, isFirst = true, targetNumber, foundClosestIndex) {
     let mesh, body;
     const size = 1;
     switch (type) {
@@ -38,6 +39,10 @@ export function createDie(type, visible = true, targetNumber, foundClosestIndex)
         case 'd20':
             mesh = createD20Mesh(size, targetNumber, foundClosestIndex);
             body = createD20Body(size, diceMaterial);
+            break;
+        case 'd100':
+            mesh = createD100Mesh(size, targetNumber, foundClosestIndex, isFirst);
+            body = createD100Body(size, diceMaterial);
             break;
         default:
             mesh = createD6Mesh(size);
@@ -228,11 +233,50 @@ export function getDieValue(die, up, targetNumber, foundClosestIndex) {
         return [parseInt(faceValues[closestIndex]), closestIndex] || [1, 1];
     } else if (die.type === 'd10') {
         const geometry = die.mesh.geometry;
-        const faceValues = ['', 1, 10, 2, 9, 3, 8, 4, 7, 5, 6];
+        const faceValues = ['', 1, 0, 2, 9, 3, 8, 4, 7, 5, 6];
 
         if (targetNumber != null && foundClosestIndex != null) {
           if (foundClosestIndex >= 0 && foundClosestIndex < faceValues.length) {
-            faceValues[foundClosestIndex] = targetNumber;
+            faceValues[foundClosestIndex] = targetNumber === 0 ? 10 : targetNumber;
+          }
+        }
+        
+        for (let i = 0; i < geometry.groups.length; i++) {
+            const group = geometry.groups[i];
+            if (group.materialIndex === 0) continue;
+            const position = geometry.attributes.position;
+            const startVertex = group.start;
+            const v0 = new THREE.Vector3().fromBufferAttribute(position, startVertex);
+            const v1 = new THREE.Vector3().fromBufferAttribute(position, startVertex + 1);
+            const v2 = new THREE.Vector3().fromBufferAttribute(position, startVertex + 2);
+            const faceNormal = new THREE.Vector3()
+                .subVectors(v1, v0)
+                .cross(new THREE.Vector3().subVectors(v2, v0))
+                .normalize();
+            const worldNormal = faceNormal.clone().applyQuaternion(die.mesh.quaternion);
+            const dot = worldNormal.dot(up);
+            if (dot > maxDot) {
+                maxDot = dot;
+                closestIndex = group.materialIndex;
+            }
+        }
+
+        return [parseInt(faceValues[closestIndex]), closestIndex] || [0, 0];
+    } else if (die.type === 'd100') {
+        const geometry = die.mesh.geometry;
+
+        let faceValues = [];
+
+        if (die.isFirst) {
+          faceValues = ['', 1, 0, 2, 9, 3, 8, 4, 7, 5, 6];
+        } else {
+          faceValues = ['', 10, '00', 20, 90, 30, 80, 40, 70, 50, 60];
+        }
+
+        if (targetNumber != null && foundClosestIndex != null) {
+          const newTargetNumber = die.isFirst ? targetNumber % 10 : targetNumber - (targetNumber % 10) 
+          if (foundClosestIndex >= 0 && foundClosestIndex < faceValues.length) {
+            faceValues[foundClosestIndex] = newTargetNumber
           }
         }
         

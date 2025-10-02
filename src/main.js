@@ -30,103 +30,117 @@ function rollDice() {
     if (found === false) {
       randomSeeds.length = 0
       diceRolls.forEach((diceRoll) => {
-          const die = createDie(diceRoll.dice, false);
-          if (!die) return;
+          const repeatCount = diceRoll.dice === "d100" ? 2 : 1;
 
-          invisibleDice.push(die);
-
-          const margin = 2;
-          const frustumSize = 18;
-          const aspect = window.innerWidth / window.innerHeight;
-          const leftBound = -frustumSize * aspect / 2;
-
-          const rand = {
-              xPos: Math.random(),
-              yPos: Math.random(),
-              zPos: Math.random(),
-              rotAxis: [Math.random(), Math.random(), Math.random()],
-              rotAngle: Math.random(),
-              vel: [Math.random(), Math.random(), Math.random()],
-              angVel: [Math.random(), Math.random(), Math.random()],
-          };
-          randomSeeds.push(rand);
-
-          // Apply position
-          const xPos = leftBound + margin + (rand.xPos * 4);
-          const yPos = 4 + rand.yPos * 4;
-          const zPos = (rand.zPos - 0.5) * (frustumSize * 0.9);
-          die.body.position.set(xPos, yPos, zPos);
-          die.mesh.position.copy(die.body.position);
-
-          // Rotation
-          die.body.quaternion.setFromAxisAngle(
-              new CANNON.Vec3(...rand.rotAxis).unit(),
-              rand.rotAngle * Math.PI * 2
-          );
-          die.mesh.quaternion.copy(die.body.quaternion);
-
-          // Velocity
-          die.body.velocity.set(
-              (0.8 + 0.8 * rand.vel[0]) * throwSpeed,
-              (rand.vel[1] * 0.2) * throwSpeed * 0.5,
-              (rand.vel[2] - 0.5) * throwSpeed
-          );
-
-          // Angular velocity
-          die.body.angularVelocity.set(
-              (rand.angVel[0] - 0.5) * throwSpin * 1.5,
-              (rand.angVel[1] - 0.5) * throwSpin * 1.5,
-              (rand.angVel[2] - 0.5) * throwSpin * 1.5
-          );
+          for (let i = 0; i < repeatCount; i++) {
+            const die = createDie(diceRoll.dice, false, i === 0);
+            if (!die) return;
+  
+            invisibleDice.push(die);
+  
+            const margin = 2;
+            const frustumSize = 18;
+            const aspect = window.innerWidth / window.innerHeight;
+            const leftBound = -frustumSize * aspect / 2;
+  
+            const rand = {
+                xPos: Math.random(),
+                yPos: Math.random(),
+                zPos: Math.random(),
+                rotAxis: [Math.random(), Math.random(), Math.random()],
+                rotAngle: Math.random(),
+                vel: [Math.random(), Math.random(), Math.random()],
+                angVel: [Math.random(), Math.random(), Math.random()],
+            };
+            randomSeeds.push(rand);
+  
+            // Apply position
+            const xPos = leftBound + margin + (rand.xPos * 4);
+            const yPos = 4 + rand.yPos * 4;
+            const zPos = (rand.zPos - 0.5) * (frustumSize * 0.9);
+            die.body.position.set(xPos, yPos, zPos);
+            die.mesh.position.copy(die.body.position);
+  
+            // Rotation
+            die.body.quaternion.setFromAxisAngle(
+                new CANNON.Vec3(...rand.rotAxis).unit(),
+                rand.rotAngle * Math.PI * 2
+            );
+            die.mesh.quaternion.copy(die.body.quaternion);
+  
+            // Velocity
+            die.body.velocity.set(
+                (0.8 + 0.8 * rand.vel[0]) * throwSpeed,
+                (rand.vel[1] * 0.2) * throwSpeed * 0.5,
+                (rand.vel[2] - 0.5) * throwSpeed
+            );
+  
+            // Angular velocity
+            die.body.angularVelocity.set(
+                (rand.angVel[0] - 0.5) * throwSpin * 1.5,
+                (rand.angVel[1] - 0.5) * throwSpin * 1.5,
+                (rand.angVel[2] - 0.5) * throwSpin * 1.5
+            );
+          }
       });
     }
 
     else {
       diceRolls.forEach((diceRoll) => {
-          const die = createDie(diceRoll.dice, true, diceRoll.rolled, closestIndexes[0]);
-          if (!die) return;
+          const repeatCount = diceRoll.dice === "d100" ? 2 : 1;
 
-          die.closestIndex = closestIndexes[0]
-          die.targetNumber = diceRoll.rolled
-          dice.push(die);
+          for (let i = 0; i < repeatCount; i++) {
+            const die = createDie(diceRoll.dice, true, i === 0, diceRoll.rolled, closestIndexes[0]);
+            if (!die) return;
 
-          // Remove the first element after using it
-          closestIndexes.shift();
-
-          const margin = 2;
-          const frustumSize = 18;
-          const aspect = window.innerWidth / window.innerHeight;
-          const leftBound = -frustumSize * aspect / 2;
-
-          const rand = randomSeeds.shift();
-
-          // Position
-          const xPos = leftBound + margin + (rand.xPos * 4);
-          const yPos = 4 + rand.yPos * 4;
-          const zPos = (rand.zPos - 0.5) * (frustumSize * 0.9);
-          die.body.position.set(xPos, yPos, zPos);
-          die.mesh.position.copy(die.body.position);
-
-          // Rotation
-          die.body.quaternion.setFromAxisAngle(
-              new CANNON.Vec3(...rand.rotAxis).unit(),
-              rand.rotAngle * Math.PI * 2
-          );
-          die.mesh.quaternion.copy(die.body.quaternion);
-
-          // Velocity
-          die.body.velocity.set(
-              (0.8 + 0.8 * rand.vel[0]) * throwSpeed,
-              (rand.vel[1] * 0.2) * throwSpeed * 0.5,
-              (rand.vel[2] - 0.5) * throwSpeed
-          );
-
-          // Angular velocity
-          die.body.angularVelocity.set(
-              (rand.angVel[0] - 0.5) * throwSpin * 1.5,
-              (rand.angVel[1] - 0.5) * throwSpin * 1.5,
-              (rand.angVel[2] - 0.5) * throwSpin * 1.5
-          );
+            if (i > 0 && diceRoll.dice === 'd100') {
+              die.isFirst = false
+            } else {
+              die.isFirst = true
+            }
+  
+            die.closestIndex = closestIndexes[0]
+            die.targetNumber = diceRoll.rolled
+            dice.push(die);
+  
+            // Remove the first element after using it
+            closestIndexes.shift();
+  
+            const margin = 2;
+            const frustumSize = 18;
+            const aspect = window.innerWidth / window.innerHeight;
+            const leftBound = -frustumSize * aspect / 2;
+  
+            const rand = randomSeeds.shift();
+  
+            // Position
+            const xPos = leftBound + margin + (rand.xPos * 4);
+            const yPos = 4 + rand.yPos * 4;
+            const zPos = (rand.zPos - 0.5) * (frustumSize * 0.9);
+            die.body.position.set(xPos, yPos, zPos);
+            die.mesh.position.copy(die.body.position);
+  
+            // Rotation
+            die.body.quaternion.setFromAxisAngle(
+                new CANNON.Vec3(...rand.rotAxis).unit(),
+                rand.rotAngle * Math.PI * 2
+            );
+            die.mesh.quaternion.copy(die.body.quaternion);
+  
+            // Velocity
+            die.body.velocity.set(
+                (0.8 + 0.8 * rand.vel[0]) * throwSpeed,
+                (rand.vel[1] * 0.2) * throwSpeed * 0.5,
+                (rand.vel[2] - 0.5) * throwSpeed
+            );
+  
+            // Angular velocity
+            die.body.angularVelocity.set(
+                (rand.angVel[0] - 0.5) * throwSpin * 1.5,
+                (rand.angVel[1] - 0.5) * throwSpin * 1.5,
+                (rand.angVel[2] - 0.5) * throwSpin * 1.5
+            );
+          }
       });
 
     }

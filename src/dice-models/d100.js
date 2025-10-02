@@ -24,7 +24,7 @@ function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
 }
 
-export function createD10Mesh(size, targetNumber, foundClosestIndex) {
+export function createD100Mesh(size, targetNumber, foundClosestIndex, isFirst) {
     const radius = size * 0.9;
     const tab = 0;
     const af = Math.PI * 6 / 5;
@@ -36,17 +36,23 @@ export function createD10Mesh(size, targetNumber, foundClosestIndex) {
     const geometry = makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
     
     const materials = [];
-    const faceValues = ['', 1, 0, 2, 9, 3, 8, 4, 7, 5, 6];
+    let faceValues = [];
+    if (isFirst) {
+      faceValues = ['', '1', '0', '2', '9', '3', '8', '4', '7', '5', '6'];
+    } else {
+      faceValues = ['', '10', '00', '20', '90', '30', '80', '40', '70', '50', '60'];
+    }
 
     if (targetNumber != null && foundClosestIndex != null) {
+      const newTargetNumber = isFirst ? targetNumber % 10 : targetNumber - (targetNumber % 10) 
       const targetIndex = foundClosestIndex; 
       if (targetIndex >= 0 && targetIndex < faceValues.length) {
           // find the index of targetNumber
-          const currentIndex = faceValues.indexOf(targetNumber === 10 ? 0 : targetNumber);
+          const currentIndex = faceValues.indexOf(String(newTargetNumber === 100 || (newTargetNumber === 0 && !isFirst) ? '00' : newTargetNumber));
           if (currentIndex !== -1) {
               // swap
               const temp = faceValues[targetIndex];
-              faceValues[targetIndex] = targetNumber === 10 ? 0 : targetNumber;
+              faceValues[targetIndex] = String(newTargetNumber === 100 || (newTargetNumber === 0 && !isFirst) ? '00' : newTargetNumber);
               faceValues[currentIndex] = temp;
           }
       }
@@ -60,11 +66,11 @@ export function createD10Mesh(size, targetNumber, foundClosestIndex) {
     for (let i = 0; i <= maxMaterialIndex; i++) {
         let texture;
         if (i === 0) {
-            texture = createTextTexture('', '#FFFFFF', '#9b59b6');
+            texture = createTextTexture('', '#FFFFFF', '#8B4513');
         } else if (i < faceValues.length) {
-            texture = createTextTexture(faceValues[i].toString(), '#FFFFFF', '#9b59b6');
+            texture = createTextTexture(faceValues[i].toString(), '#FFFFFF', '#8B4513');
         } else {
-            texture = createTextTexture('', '#FFFFFF', '#9b59b6');
+            texture = createTextTexture('', '#FFFFFF', '#8B4513');
         }
         
         materials.push(new THREE.MeshPhongMaterial({
@@ -83,7 +89,7 @@ export function createD10Mesh(size, targetNumber, foundClosestIndex) {
     return mesh;
 }
 
-export function createD10Body(size, material) {
+export function createD100Body(size, material) {
     const cannonVertices = D10_GEOMETRY.vertices.map(v => new CANNON.Vec3(v[0] * size, v[1] * size, v[2] * size));
     const cannonFaces = [];
     D10_GEOMETRY.faces.forEach(face => {
