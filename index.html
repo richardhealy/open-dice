@@ -11,49 +11,6 @@
     <div id="scene-container"></div>
     <div id="ui-container">
         <h2>Dice Roller</h2>
-        <div class="control-group">
-            <label for="num-dice-types">Number of Dice Types</label>
-            <select id="num-dice-types">
-                <option value="1">1 Type</option>
-                <option value="2">2 Types</option>
-            </select>
-        </div>
-
-        <div id="dice-group-1">
-            <div class="control-group">
-                <label for="dice-type-1">Dice Type 1</label>
-                <select id="dice-type-1">
-                    <option value="d4">D4</option>
-                    <option value="d6" selected>D6</option>
-                    <option value="d8">D8</option>
-                    <option value="d10">D10</option>
-                    <option value="d12">D12</option>
-                    <option value="d20">D20</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label for="dice-count-1">Number of Dice</label>
-                <input type="number" id="dice-count-1" value="2" min="1" max="10">
-            </div>
-        </div>
-
-        <div id="dice-group-2" style="display: none;">
-             <div class="control-group">
-                <label for="dice-type-2">Dice Type 2</label>
-                <select id="dice-type-2">
-                    <option value="d4">D4</option>
-                    <option value="d6">D6</option>
-                    <option value="d8">D8</option>
-                    <option value="d10">D10</option>
-                    <option value="d12">D12</option>
-                    <option value="d20" selected>D20</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label for="dice-count-2">Number of Dice</label>
-                <input type="number" id="dice-count-2" value="2" min="1" max="10">
-            </div>
-        </div>
 
         <div class="control-group">
             <label for="throw-speed">Throw Speed (<span id="throw-speed-value">15</span>)</label>
@@ -63,10 +20,23 @@
             <label for="throw-spin">Throw Spin (<span id="throw-spin-value">20</span>)</label>
             <input type="range" id="throw-spin" min="5" max="40" value="20" step="1">
         </div>
+
+        <!-- JSON Input -->
+        <div class="control-group">
+            <label for="json-input">Custom Dice JSON</label><br>
+            <textarea id="json-input" rows="6" cols="40">
+              [{ "dice": "d6", "rolled": 6 },
+              { "dice": "d6", "rolled": 4 },
+              { "dice": "d20", "rolled": 18 },
+              { "dice": "d4", "rolled": 2 }]
+            </textarea>
+        </div>
+
         <button id="roll-button">Roll Dice</button>
         <button id="reset-button">Reset</button>
     </div>
     <div id="results-container"></div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

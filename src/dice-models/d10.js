@@ -24,7 +24,7 @@ function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
 }
 
-export function createD10Mesh(size) {
+export function createD10Mesh(size, targetNumber, foundClosestIndex) {
     const radius = size * 0.9;
     const tab = 0;
     const af = Math.PI * 6 / 5;
@@ -36,7 +36,21 @@ export function createD10Mesh(size) {
     const geometry = makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
     
     const materials = [];
-    const faceValues = D10_GEOMETRY.faceValues;
+    const faceValues = ['', 1, 10, 2, 9, 3, 8, 4, 7, 5, 6];
+
+    if (targetNumber != null && foundClosestIndex != null) {
+      const targetIndex = foundClosestIndex; 
+      if (targetIndex >= 0 && targetIndex < faceValues.length) {
+          // find the index of targetNumber
+          const currentIndex = faceValues.indexOf(targetNumber);
+          if (currentIndex !== -1) {
+              // swap
+              const temp = faceValues[targetIndex];
+              faceValues[targetIndex] = targetNumber;
+              faceValues[currentIndex] = temp;
+          }
+      }
+    }
     
     let maxMaterialIndex = 0;
     for (let i = 0; i < geometry.groups.length; i++) {
