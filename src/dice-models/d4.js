@@ -30,7 +30,7 @@ function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
 }
 
-export function createD4Mesh(size) {
+export function createD4Mesh(size, targetNumber, foundClosestIndex) {
     const radius = size * 1.2;
     const tab = -0.1;
     const af = Math.PI * 7 / 6;
@@ -47,7 +47,14 @@ export function createD4Mesh(size) {
         [[], [0, 0, 0], [4, 2, 3], [1, 4, 3], [4, 1, 2], [1, 3, 2]]
     ];
 
-    const faceTexts = d4FaceTexts[0];
+    const faceTexts = d4FaceTexts[0].map(subArray =>
+      subArray.map(n => {
+        if (n === foundClosestIndex) return targetNumber;
+        if (n === targetNumber) return foundClosestIndex;
+        return n;
+      })
+    );
+
 
     for (let i = 0; i < faceTexts.length; ++i) {
         let texture = createD4TextTexture(faceTexts[i], '#FFFFFF', '#4caf4c');

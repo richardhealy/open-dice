@@ -24,7 +24,7 @@ function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
 }
 
-export function createD12Mesh(size) {
+export function createD12Mesh(size, targetNumber, foundClosestIndex) {
     const radius = size * 0.9;
     const tab = 0.2;
     const af = -Math.PI / 4 / 2;
@@ -37,20 +37,34 @@ export function createD12Mesh(size) {
     
     const materials = [];
     
-    const faceTexts = [' ', '0', '1', '2', '3', '4', '5', '6', '7', '8',
+    const faceValues = [' ', '0', '1', '2', '3', '4', '5', '6', '7', '8',
         '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20'];
+    
+    if (targetNumber != null && foundClosestIndex != null) {
+      const targetIndex = foundClosestIndex + 1; 
+      if (targetIndex >= 0 && targetIndex < faceValues.length) {
+          // find the index of targetNumber
+          const currentIndex = faceValues.indexOf(String(targetNumber));
+          if (currentIndex !== -1) {
+              // swap
+              const temp = faceValues[targetIndex];
+              faceValues[targetIndex] = String(targetNumber);
+              faceValues[currentIndex] = temp;
+          }
+      }
+    }
     
     let maxMaterialIndex = 0;
     for (let i = 0; i < geometry.groups.length; i++) {
         maxMaterialIndex = Math.max(maxMaterialIndex, geometry.groups[i].materialIndex);
     }
-    
+
     for (let i = 0; i <= maxMaterialIndex; i++) {
         let texture;
         if (i === 0) {
             texture = createTextTexture('', '#FFFFFF', '#475569');
-        } else if (i < faceTexts.length) {
-            texture = createTextTexture(faceTexts[i], '#FFFFFF', '#475569');
+        } else if (i < faceValues.length) {
+            texture = createTextTexture(faceValues[i], '#FFFFFF', '#475569');
         } else {
             texture = createTextTexture('', '#FFFFFF', '#475569');
         }
