@@ -2,12 +2,11 @@ body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #000;
+    background: url('/bg.jpeg') no-repeat center center fixed;
+    background-size: cover;
     color: #333;
     overflow: hidden;
 }
-
-test-background
 #scene-container {
     width: 100vw;
     height: 100vh;
@@ -15,8 +14,6 @@ test-background
     top: 0;
     left: 0;
     z-index: 1;
-    background: url('/bg.jpeg') no-repeat center center fixed;
-    background-size: cover;
 }
 #ui-container {
     position: fixed;

@@ -5,7 +5,6 @@ export let scene, camera, renderer, up, floor, directionalLight;
 
 export function initScene() {
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xc2d9ee); // A nice, light powder blue
 
     const frustumSize = 18;
     const aspect = window.innerWidth / window.innerHeight;
@@ -21,7 +20,7 @@ export function initScene() {
     camera.lookAt(0, 0, 0);
     camera.updateProjectionMatrix();
 
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
