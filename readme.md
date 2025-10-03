@@ -1,4 +1,4 @@
-# 🎲 Dice Roll Engine
+# 🎲 Open Dice DnD
 
 A beautiful 3D physics-based dice rolling engine built with Three.js and Cannon.js. Perfect for adding realistic dice rolling to your web applications, games, or tabletop RPG tools!
 
@@ -14,7 +14,7 @@ A beautiful 3D physics-based dice rolling engine built with Three.js and Cannon.
 
 ## 📦 Installation
 
-### Via npm (when published)
+### Via npm
 
 ```bash
 npm install open-dice-dnd
@@ -346,6 +346,42 @@ npm run build
 | `d12` | 12-sided die | 1-12 |
 | `d20` | 20-sided die | 1-20 |
 | `d100` | Percentile die (two d10s) | 00-99 or 1-100 |
+
+## 📝 Changelog
+
+### [1.0.0] - 2025-10-03
+
+#### 🎉 Initial Release
+
+**Core Features:**
+- ✨ 3D physics-based dice rolling engine
+- 🎲 Support for all standard RPG dice types (d4, d6, d8, d10, d12, d20, d100)
+- 🎯 Realistic physics simulation using Cannon.js
+- 🎨 Beautiful 3D rendering with Three.js
+- 📱 Responsive design that works on any container size
+
+**API:**
+- 🔧 Class-based `DiceRoller` API for easy integration
+- ⚡ Promise-based roll method for async/await support
+- 🎪 Event callbacks for roll completion
+- 🎛️ Customizable throw speed and spin
+- 🧹 Automatic resource cleanup and memory management
+
+**Developer Experience:**
+- 📦 Available as npm package: `open-dice-dnd`
+- 📚 Comprehensive documentation with examples
+- ⚛️ React integration example
+- 💚 Vue integration example
+- 🎮 Live demo included
+
+**Build & Distribution:**
+- 📦 ES module format (7.83 kB gzipped)
+- 🌐 UMD format for browser compatibility
+- 🌲 Tree-shakeable exports
+- 🔗 Peer dependencies for optimal bundle size
+
+**License:**
+- 📄 MIT License
 
 ## 🤝 Contributing
 
