@@ -27,7 +27,7 @@ function createTextTexture(text, color, backColor) {
         const textWidth = metrics.width;
 
         // adjust underline position a little below the text
-        const underlineY = centerY + ts * 0.15;
+        const underlineY = centerY + ts * 0.165;
         const underlineX1 = centerX - textWidth / 2;
         const underlineX2 = centerX + textWidth / 2;
 

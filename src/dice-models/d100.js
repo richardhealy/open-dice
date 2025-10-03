@@ -17,7 +17,7 @@ function createTextTexture(text, color, backColor) {
     context.fillStyle = color;
 
     const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2 + 20;
+    const centerY = canvas.height / 2 + 16;
 
     context.fillText(text, centerX, centerY);
   
@@ -27,7 +27,7 @@ function createTextTexture(text, color, backColor) {
         const textWidth = metrics.width;
 
         // adjust underline position a little below the text
-        const underlineY = centerY + ts * 0.15;
+        const underlineY = centerY + ts * 0.165;
         const underlineX1 = centerX - textWidth / 2;
         const underlineX2 = centerX + textWidth / 2;
 
