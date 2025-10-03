@@ -15,8 +15,7 @@ function createD4TextTexture(text, color, backColor) {
     context.textBaseline = "middle";
     context.fillStyle = color;
     for (let i in text) {
-        context.fillText(text[i], canvas.width / 2,
-            canvas.height / 2 - ts * 0.3);
+        context.fillText(text[i], canvas.width / 2, canvas.height / 2 - ts * 0.3);
         context.translate(canvas.width / 2, canvas.height / 2);
         context.rotate(Math.PI * 2 / 3); // Rotate for each number
         context.translate(-canvas.width / 2, -canvas.height / 2);

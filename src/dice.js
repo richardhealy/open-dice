@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { diceMaterial, world } from './physics.js';
 import { scene } from './scene.js';
-import { D4_GEOMETRY, D6_GEOMETRY, D8_GEOMETRY, D10_GEOMETRY, D12_GEOMETRY, D20_GEOMETRY } from './geometry.js';
 import { createD4Mesh, createD4Body } from './dice-models/d4.js';
 import { createD6Mesh } from './dice-models/d6.js';
 import { createD8Mesh, createD8Body } from './dice-models/d8.js';
@@ -167,7 +166,7 @@ export function getDieValue(die, up, targetNumber, foundClosestIndex) {
         return [parseInt(faceValues[closestIndex]), closestIndex] || [1, 1];
     } else if (die.type === 'd12') {
         const geometry = die.mesh.geometry;
-        const faceValues = D12_GEOMETRY.faceValues || [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        const faceValues = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
         if (targetNumber != null && foundClosestIndex != null) {
           if (foundClosestIndex >= 0 && foundClosestIndex < faceValues.length) {
