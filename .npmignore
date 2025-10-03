@@ -1,0 +1,13 @@
+demo/
+public/
+index.html
+vite.config.lib.js
+src/main.js
+src/ui.js
+src/counter.js
+src/style.css
+src/javascript.svg
+node_modules/
+.git/
+.gitignore
+

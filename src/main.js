@@ -1,6 +1,6 @@
 import * as CANNON from 'cannon-es';
 import { initScene, scene, camera, renderer, up, floor, directionalLight } from './scene.js';
-import { initPhysics, world, updatePhysicsWalls } from './physics.js';
+import { initPhysics, world, diceMaterial, updatePhysicsWalls } from './physics.js';
 import { setupUI } from './ui.js';
 import { createDie, getDieValue } from './dice.js';
 
@@ -33,7 +33,7 @@ function rollDice() {
           const repeatCount = diceRoll.dice === "d100" ? 2 : 1;
 
           for (let i = 0; i < repeatCount; i++) {
-            const die = createDie(diceRoll.dice, false, i === 0);
+            const die = createDie(diceRoll.dice, false, i === 0, undefined, undefined, diceMaterial, scene, world);
             if (!die) return;
   
             invisibleDice.push(die);
@@ -90,7 +90,7 @@ function rollDice() {
           const repeatCount = diceRoll.dice === "d100" ? 2 : 1;
 
           for (let i = 0; i < repeatCount; i++) {
-            const die = createDie(diceRoll.dice, true, i === 0, diceRoll.rolled, closestIndexes[0]);
+            const die = createDie(diceRoll.dice, true, i === 0, diceRoll.rolled, closestIndexes[0], diceMaterial, scene, world);
             if (!die) return;
 
             if (i > 0 && diceRoll.dice === 'd100') {

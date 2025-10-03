@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dice Roll Engine - Simple Example</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        #dice-container {
+            width: 100vw;
+            height: 70vh;
+            position: relative;
+        }
+
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        #result {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            min-width: 120px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="dice-container"></div>
+    <div id="controls">
+        <button id="roll-d20">Roll D20</button>
+        <button id="roll-d6">Roll D6</button>
+        <button id="roll-multiple">Roll Multiple</button>
+        <button id="reset">Reset</button>
+        <div id="result"></div>
+    </div>
+
+    <!-- Import from CDN or local build -->
+    <script type="module">
+        import { DiceRoller } from './dist/open-dice-dnd.es.js';
+
+        const container = document.getElementById('dice-container');
+        const resultDiv = document.getElementById('result');
+
+        // Create the dice roller
+        const diceRoller = new DiceRoller({
+            container: container,
+            throwSpeed: 15,
+            throwSpin: 20,
+            onRollComplete: (total) => {
+                resultDiv.textContent = `Total: ${total}`;
+            }
+        });
+
+        // Button handlers
+        document.getElementById('roll-d20').addEventListener('click', () => {
+            resultDiv.textContent = 'Rolling...';
+            diceRoller.roll([{ dice: 'd20' }]);
+        });
+
+        document.getElementById('roll-d6').addEventListener('click', () => {
+            resultDiv.textContent = 'Rolling...';
+            diceRoller.roll([{ dice: 'd6' }]);
+        });
+
+        document.getElementById('roll-multiple').addEventListener('click', () => {
+            resultDiv.textContent = 'Rolling...';
+            diceRoller.roll([
+                { dice: 'd20' },
+                { dice: 'd12' },
+                { dice: 'd6' }
+            ]);
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+            diceRoller.reset();
+            resultDiv.textContent = '';
+        });
+
+        // Initial roll
+        setTimeout(() => {
+            diceRoller.roll([{ dice: 'd20' }]);
+        }, 500);
+    </script>
+</body>
+</html>
+

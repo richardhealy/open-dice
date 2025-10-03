@@ -1,0 +1,113 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: url('/bg.jpeg') no-repeat center center fixed;
+    background-size: cover;
+    color: #333;
+    overflow: hidden;
+}
+#scene-container {
+    width: 100vw;
+    height: 100vh;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+}
+#ui-container {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    width: 300px;
+    background-color: rgba(45, 55, 72, 0.85);
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    color: #FFFFFF;
+    z-index: 10;
+}
+#ui-container button {
+    margin-top: 10px;
+}
+h2, h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #444;
+    padding-bottom: 10px;
+}
+.control-group {
+    margin-bottom: 15px;
+}
+.dice-controls {
+    border-top: 1px solid #444;
+    margin-top: 15px;
+    padding-top: 15px;
+}
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.9em;
+    color: #ccc;
+}
+select, input, button {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #555;
+    background: #333;
+    color: #fff;
+    font-size: 1em;
+    box-sizing: border-box;
+}
+input[type="range"] {
+    padding: 0;
+}
+button {
+    width: 100%;
+    padding: 10px;
+    background-color: #007bff;
+    border: none;
+    cursor: pointer;
+    transition: background 0.3s;
+    font-weight: bold;
+}
+button:hover {
+    background-color: #0056b3;
+}
+
+#reset-button {
+    background-color: #64748b; /* Slate Gray */
+}
+
+#reset-button:hover {
+    background-color: #475569; /* Darker Slate Gray */
+}
+
+#results-container {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 20px;
+    background-color: rgba(0,0,0,0.5);
+    color: white;
+    font-size: 24px;
+    font-weight: bold;
+    border-radius: 8px;
+    text-shadow: 1px 1px 3px rgba(0,0,0,0.7);
+    z-index: 10; /* Ensure it's on top of the canvas */
+}
+
+textarea {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #555;
+    background: #333;
+    color: #fff;
+    font-size: 1em;   
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 120px; 
+    max-height: 300px; 
+}

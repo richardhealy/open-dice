@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dice Roll Engine - Demo</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="scene-container"></div>
+    <div id="ui-container">
+        <h2>Dice Roller Demo</h2>
+
+        <div class="control-group">
+            <label for="throw-speed">Throw Speed (<span id="throw-speed-value">15</span>)</label>
+            <input type="range" id="throw-speed" min="5" max="30" value="15" step="1">
+        </div>
+        <div class="control-group">
+            <label for="throw-spin">Throw Spin (<span id="throw-spin-value">20</span>)</label>
+            <input type="range" id="throw-spin" min="5" max="40" value="20" step="1">
+        </div>
+
+        <!-- JSON Input -->
+        <div class="control-group">
+            <label for="json-input">Custom Dice JSON</label><br>
+            <textarea id="json-input" rows="6" cols="40">
+[{ "dice": "d10", "rolled": 6 },
+{ "dice": "d100", "rolled": 96 },
+{ "dice": "d6", "rolled": 6 },
+{ "dice": "d8", "rolled": 9 },
+{ "dice": "d12", "rolled": 6 },
+{ "dice": "d20", "rolled": 9 }]
+            </textarea>
+        </div>
+
+        <button id="roll-button">Roll Dice</button>
+        <button id="reset-button">Reset</button>
+    </div>
+    <div id="results-container"></div>
+
+    <script type="module" src="./demo.js"></script>
+  </body>
+</html>
+

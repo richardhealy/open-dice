@@ -1,85 +1,371 @@
-# 3D Physics-Based Dice Roller Engine
+# 🎲 Dice Roll Engine
 
-A high-performance, browser-based dice rolling engine built with Three.js and the Cannon-es physics engine. This project provides a realistic, top-down view of dice rolling with smooth animations and reliable settling behavior.
+A beautiful 3D physics-based dice rolling engine built with Three.js and Cannon.js. Perfect for adding realistic dice rolling to your web applications, games, or tabletop RPG tools!
 
-## Features
+## ✨ Features
 
-*   **Realistic Physics**: Utilizes Cannon-es for proper dice tumbling, bouncing, and settling.
-*   **3D Rendering**: Renders the scene with Three.js, featuring a top-down camera, lighting, and shadows.
-*   **Complete Set of Dice**: Supports all standard gaming dice: D4, D6, D8, D10, D12, and D20.
-*   **Simple UI**: An intuitive interface to select dice type, quantity, throw power, and spin.
-*   **Collision Detection**: Dice collide realistically with each other and the floor boundaries.
+- 🎯 Physics-based dice rolling with realistic behavior
+- 🎨 Support for multiple dice types: d4, d6, d8, d10, d12, d20, d100
+- 🎬 Smooth animations and shadows
+- 📱 Responsive and works on any container size
+- 🔧 Easy-to-use API
+- 📦 Lightweight and modular
+- 🎭 Customizable throw speed and spin
 
-## Technologies Used
+## 📦 Installation
 
-*   **JavaScript (ES6+)**: Core application logic.
-*   **Three.js**: For 3D rendering, scene management, cameras, and lighting.
-*   **Cannon-es**: A maintained fork of Cannon.js for 3D physics simulation.
-*   **Vite**: A modern, fast frontend build tool for development and bundling.
-*   **HTML5 & CSS3**: For the user interface structure and styling.
-
-## Local Setup and Installation
-
-To get this project running on your local machine, follow these steps.
-
-**1. Clone the repository:**
+### Via npm (when published)
 
 ```bash
-git clone https://github.com/your-username/dice-roll-engine.git
-cd dice-roll-engine
+npm install open-dice-dnd
 ```
 
-*(Replace `your-username` with your actual GitHub username or the repository's URL)*
-
-**2. Install dependencies:**
-
-This will install all the necessary packages like Vite, Three.js, and Cannon-es.
+### Local Development
 
 ```bash
+git clone <repository-url>
+cd open-dice-dnd
 npm install
 ```
 
-**3. Run the development server:**
+## 🚀 Quick Start
 
-This command starts the Vite development server and opens the project in your browser. The server will automatically reload when you make changes to the code.
+### Basic Usage
+
+```javascript
+import { DiceRoller } from 'open-dice-dnd';
+
+// Get your container element
+const container = document.getElementById('dice-container');
+
+// Create a new dice roller instance
+const diceRoller = new DiceRoller({
+    container: container,
+    throwSpeed: 15,
+    throwSpin: 20,
+    onRollComplete: (total) => {
+        console.log('Roll total:', total);
+    }
+});
+
+// Roll some dice!
+const diceConfig = [
+    { dice: 'd20', rolled: 15 },
+    { dice: 'd6', rolled: 4 }
+];
+
+diceRoller.roll(diceConfig).then(total => {
+    console.log('Dice settled! Total:', total);
+});
+```
+
+### HTML Setup
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        #dice-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+    <div id="dice-container"></div>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
+```
+
+## 📖 API Reference
+
+### `new DiceRoller(options)`
+
+Creates a new dice roller instance.
+
+#### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `container` | HTMLElement | **Required** | The DOM element to render the canvas in |
+| `width` | number | Container width | Canvas width in pixels |
+| `height` | number | Container height | Canvas height in pixels |
+| `throwSpeed` | number | `15` | Initial throw speed (5-30) |
+| `throwSpin` | number | `20` | Initial throw spin (5-40) |
+| `onRollComplete` | function | `null` | Callback function when dice settle |
+
+### Methods
+
+#### `roll(diceConfig)`
+
+Roll dice with the given configuration.
+
+**Parameters:**
+- `diceConfig` (Array): Array of dice configurations
+  - `dice` (string): Type of die - `'d4'`, `'d6'`, `'d8'`, `'d10'`, `'d12'`, `'d20'`, or `'d100'`
+  - `rolled` (number, optional): Target number for the roll
+
+**Returns:** `Promise<number>` - Promise that resolves with the total roll result
+
+**Example:**
+```javascript
+const result = await diceRoller.roll([
+    { dice: 'd20', rolled: 18 },
+    { dice: 'd6' },
+    { dice: 'd8', rolled: 5 }
+]);
+console.log('Total:', result);
+```
+
+#### `reset()`
+
+Reset and clear all dice from the scene with a fade animation.
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```javascript
+await diceRoller.reset();
+```
+
+#### `setThrowSpeed(speed)`
+
+Update the throw speed.
+
+**Parameters:**
+- `speed` (number): New throw speed (recommended: 5-30)
+
+**Example:**
+```javascript
+diceRoller.setThrowSpeed(20);
+```
+
+#### `setThrowSpin(spin)`
+
+Update the throw spin.
+
+**Parameters:**
+- `spin` (number): New throw spin (recommended: 5-40)
+
+**Example:**
+```javascript
+diceRoller.setThrowSpin(25);
+```
+
+#### `destroy()`
+
+Destroy the dice roller instance and clean up all resources.
+
+**Example:**
+```javascript
+diceRoller.destroy();
+```
+
+## 🎮 Examples
+
+### Rolling Multiple Dice Types
+
+```javascript
+const diceRoller = new DiceRoller({
+    container: document.getElementById('dice-container')
+});
+
+// Roll a variety of dice
+await diceRoller.roll([
+    { dice: 'd20' },
+    { dice: 'd12' },
+    { dice: 'd10' },
+    { dice: 'd8' },
+    { dice: 'd6' },
+    { dice: 'd4' }
+]);
+```
+
+### D100 (Percentile) Dice
+
+```javascript
+// D100 automatically rolls two d10s
+await diceRoller.roll([
+    { dice: 'd100', rolled: 96 }
+]);
+```
+
+### With Custom UI Controls
+
+```javascript
+const diceRoller = new DiceRoller({
+    container: document.getElementById('dice-container'),
+    onRollComplete: (total) => {
+        document.getElementById('result').textContent = `Total: ${total}`;
+    }
+});
+
+// Button click handler
+document.getElementById('roll-btn').addEventListener('click', () => {
+    diceRoller.roll([
+        { dice: 'd20' },
+        { dice: 'd6' }
+    ]);
+});
+
+// Reset button handler
+document.getElementById('reset-btn').addEventListener('click', () => {
+    diceRoller.reset();
+});
+```
+
+### React Integration
+
+```jsx
+import { useEffect, useRef, useState } from 'react';
+import { DiceRoller } from 'open-dice-dnd';
+
+function DiceComponent() {
+    const containerRef = useRef(null);
+    const diceRollerRef = useRef(null);
+    const [result, setResult] = useState(null);
+
+    useEffect(() => {
+        if (containerRef.current && !diceRollerRef.current) {
+            diceRollerRef.current = new DiceRoller({
+                container: containerRef.current,
+                onRollComplete: (total) => {
+                    setResult(total);
+                }
+            });
+        }
+
+        return () => {
+            if (diceRollerRef.current) {
+                diceRollerRef.current.destroy();
+            }
+        };
+    }, []);
+
+    const handleRoll = () => {
+        diceRollerRef.current?.roll([
+            { dice: 'd20' },
+            { dice: 'd6' }
+        ]);
+    };
+
+    return (
+        <div>
+            <div ref={containerRef} style={{ width: '100%', height: '500px' }} />
+            <button onClick={handleRoll}>Roll Dice</button>
+            {result && <p>Total: {result}</p>}
+        </div>
+    );
+}
+```
+
+### Vue Integration
+
+```vue
+<template>
+    <div>
+        <div ref="containerRef" style="width: 100%; height: 500px;"></div>
+        <button @click="handleRoll">Roll Dice</button>
+        <p v-if="result">Total: {{ result }}</p>
+    </div>
+</template>
+
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue';
+import { DiceRoller } from 'open-dice-dnd';
+
+const containerRef = ref(null);
+const result = ref(null);
+let diceRoller = null;
+
+onMounted(() => {
+    if (containerRef.value) {
+        diceRoller = new DiceRoller({
+            container: containerRef.value,
+            onRollComplete: (total) => {
+                result.value = total;
+            }
+        });
+    }
+});
+
+onUnmounted(() => {
+    if (diceRoller) {
+        diceRoller.destroy();
+    }
+});
+
+const handleRoll = () => {
+    if (diceRoller) {
+        diceRoller.roll([
+            { dice: 'd20' },
+            { dice: 'd6' }
+        ]);
+    }
+};
+</script>
+```
+
+## 🛠️ Development
+
+### Running the Demo
 
 ```bash
 npm run dev
 ```
 
-The application should now be running, typically at `http://localhost:5173`.
+Then open your browser to `http://localhost:5173`
 
-## How It Works
+### Building the Library
 
-The application initializes a `three.js` scene and a `cannon-es` physics world. When the user selects a dice type and count, the following happens:
-
-1.  **Dice Creation**: For each die, a `three.js` mesh is created for its visual representation and a `cannon-es` rigid body is created for its physics simulation. The geometry for each die is defined in the `src/dice-models/` directory.
-2.  **Rolling**: The dice are given an initial position, velocity, and angular velocity to simulate a throw.
-3.  **Animation Loop**: In the animation loop, the physics world is stepped forward, and the positions and rotations of the `three.js` meshes are updated to match the physics bodies.
-4.  **Settling and Results**: The application checks when the dice have come to a rest by monitoring their velocity. Once all dice are settled, the final value of each die is calculated based on which face is pointing up, and the total is displayed.
-
-## Project Structure
-
-The project is organized into modules to keep the code clean and maintainable.
-
+```bash
+npm run build:lib
 ```
-/
-├── index.html          # Main HTML entry point
-├── package.json        # Project dependencies and scripts
-└── src/
-    ├── main.js         # Core application logic, animation loop
-    ├── dice.js         # Logic for creating dice (mesh & physics body)
-    ├── physics.js      # Cannon-es world setup, gravity, materials
-    ├── scene.js        # Three.js scene setup, camera, lights, floor
-    ├── ui.js           # UI event listeners and DOM manipulation
-    ├── geometry.js     # Geometry helpers for creating dice shapes
-    ├── counter.js      # A simple counter example (can be removed)
-    ├── style.css       # All application styles
-    └── dice-models/
-        ├── d4.js
-        ├── d6.js
-        ├── d8.js
-        ├── d10.js
-        ├── d12.js
-        └── d20.js
+
+This creates the distributable files in the `dist/` directory:
+- `open-dice-dnd.es.js` - ES module format
+- `open-dice-dnd.umd.js` - UMD format (for browsers and Node.js)
+
+### Building the Demo
+
+```bash
+npm run build
 ```
+
+## 📝 Dice Types
+
+| Type | Description | Range |
+|------|-------------|-------|
+| `d4` | 4-sided die | 1-4 |
+| `d6` | 6-sided die (standard cube) | 1-6 |
+| `d8` | 8-sided die | 1-8 |
+| `d10` | 10-sided die | 0-9 or 1-10 |
+| `d12` | 12-sided die | 1-12 |
+| `d20` | 20-sided die | 1-20 |
+| `d100` | Percentile die (two d10s) | 00-99 or 1-100 |
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+MIT License - see LICENSE file for details
+
+## 🙏 Credits
+
+Built with:
+- [Three.js](https://threejs.org/) - 3D graphics
+- [Cannon.js](https://schteppe.github.io/cannon.js/) - Physics engine
+- [Vite](https://vitejs.dev/) - Build tool
+
+## 📮 Support
+
+If you encounter any issues or have questions, please file an issue on the GitHub repository.
+
+---
+
+Made with ❤️ for tabletop gaming enthusiasts and web developers

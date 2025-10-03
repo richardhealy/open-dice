@@ -1,17 +1,50 @@
 {
-  "name": "dice-roll-engine",
-  "private": true,
-  "version": "0.0.0",
+  "name": "open-dice-dnd",
+  "version": "1.0.0",
+  "author": "Richard Fernandez <richard@superdevs.pro>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/richardhealy/open-dice.git"
+  },
+  "description": "A 3D physics-based dice rolling engine built with Three.js and Cannon.js",
+  "main": "./dist/open-dice-dnd.umd.js",
+  "module": "./dist/open-dice-dnd.es.js",
+  "exports": {
+    ".": {
+      "import": "./dist/open-dice-dnd.es.js",
+      "require": "./dist/open-dice-dnd.umd.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "readme.md"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:lib": "vite build --config vite.config.lib.js",
     "preview": "vite preview"
   },
+  "keywords": [
+    "dice",
+    "3d",
+    "physics",
+    "threejs",
+    "cannonjs",
+    "dice-roller",
+    "game",
+    "simulation"
+  ],
   "devDependencies": {
     "vite": "^5.2.0"
   },
   "dependencies": {
+    "cannon-es": "^0.20.0",
+    "three": "^0.130.0"
+  },
+  "peerDependencies": {
     "cannon-es": "^0.20.0",
     "three": "^0.130.0"
   }

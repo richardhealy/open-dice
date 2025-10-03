@@ -1,8 +1,6 @@
 
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { diceMaterial, world } from './physics.js';
-import { scene } from './scene.js';
 import { createD4Mesh, createD4Body } from './dice-models/d4.js';
 import { createD6Mesh } from './dice-models/d6.js';
 import { createD8Mesh, createD8Body } from './dice-models/d8.js';
@@ -11,49 +9,62 @@ import { createD12Mesh, createD12Body } from './dice-models/d12.js';
 import { createD20Mesh, createD20Body } from './dice-models/d20.js';
 import { createD100Body, createD100Mesh } from './dice-models/d100.js';
 
-export function createDie(type, visible = true, isFirst = true, targetNumber, foundClosestIndex) {
+export function createDie(type, visible = true, isFirst = true, targetNumber, foundClosestIndex, customMaterial = null, customScene = null, customWorld = null) {
+    // Use custom material/scene/world if provided
+    const material = customMaterial || new CANNON.Material('dice');
+    const targetScene = customScene;
+    const targetWorld = customWorld;
+    
     let mesh, body;
     const size = 1;
     switch (type) {
         case 'd4':
             mesh = createD4Mesh(size, targetNumber, foundClosestIndex);
-            body = createD4Body(size, diceMaterial);
+            body = createD4Body(size, material);
             break;
         case 'd6':
             mesh = createD6Mesh(size, targetNumber, foundClosestIndex);
-            body = new CANNON.Body({ mass: 1, shape: new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2)), material: diceMaterial });
+            body = new CANNON.Body({ mass: 1, shape: new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2)), material: material });
             break;
         case 'd8':
             mesh = createD8Mesh(size, targetNumber, foundClosestIndex);
-            body = createD8Body(size, diceMaterial);
+            body = createD8Body(size, material);
             break;
         case 'd10':
             mesh = createD10Mesh(size, targetNumber, foundClosestIndex);
-            body = createD10Body(size, diceMaterial);
+            body = createD10Body(size, material);
             break;
         case 'd12':
             mesh = createD12Mesh(size, targetNumber, foundClosestIndex);
-            body = createD12Body(size, diceMaterial);
+            body = createD12Body(size, material);
             break;
         case 'd20':
             mesh = createD20Mesh(size, targetNumber, foundClosestIndex);
-            body = createD20Body(size, diceMaterial);
+            body = createD20Body(size, material);
             break;
         case 'd100':
             mesh = createD100Mesh(size, targetNumber, foundClosestIndex, isFirst);
-            body = createD100Body(size, diceMaterial);
+            body = createD100Body(size, material);
             break;
         default:
             mesh = createD6Mesh(size);
-            body = new CANNON.Body({ mass: 1, shape: new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2)), material: diceMaterial });
+            body = new CANNON.Body({ mass: 1, shape: new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2)), material: material });
             break;
     }
+    
     if (visible)
       mesh.castShadow = true;
     else 
       mesh.visible = false
-    scene.add(mesh);
-    world.addBody(body);
+    
+    // Add to scene and world if available (backwards compatibility)
+    if (targetScene) {
+        targetScene.add(mesh);
+    }
+    if (targetWorld) {
+        targetWorld.addBody(body);
+    }
+    
     body.linearDamping = 0.1;
     body.angularDamping = 0.1;
     return { mesh, body, type };
