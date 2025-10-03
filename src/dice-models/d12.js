@@ -6,15 +6,39 @@ import { D12_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
 function createTextTexture(text, color, backColor) {
     let canvas = document.createElement("canvas");
     let context = canvas.getContext("2d");
-    let ts = calculateTextureSize(50 / 2 + 50 * 1.0) * 2; // Using size 50 as reference
+    let ts = calculateTextureSize(50 / 2 + 50 * 1.0) * 2;
     canvas.width = canvas.height = ts;
+
     context.font = ts / (1 + 2 * 1.0) + "pt Arial";
     context.fillStyle = backColor;
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillStyle = color;
-    context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    context.fillText(text, centerX, centerY);
+
+    // add underline for 6 and 9 (and their variants like 60, 90)
+    if (text === "6" || text === "9" || text === "60" || text === "90") {
+        const metrics = context.measureText(text);
+        const textWidth = metrics.width;
+
+        // adjust underline position a little below the text
+        const underlineY = centerY + ts * 0.15;
+        const underlineX1 = centerX - textWidth / 2;
+        const underlineX2 = centerX + textWidth / 2;
+
+        context.beginPath();
+        context.strokeStyle = color;
+        context.lineWidth = Math.max(3, ts * 0.02); // keep relative thickness
+        context.moveTo(underlineX1, underlineY);
+        context.lineTo(underlineX2, underlineY);
+        context.stroke();
+    }
+
     let texture = new THREE.Texture(canvas);
     texture.needsUpdate = true;
     return texture;
