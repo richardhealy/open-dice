@@ -4,6 +4,12 @@ import * as CANNON from 'cannon-es';
 import { D20_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
 
 function createTextTexture(text, color, backColor) {
+    console.log('🎨 createTextTexture called with:');
+    console.log('  text:', text);
+    console.log('  color:', color);
+    console.log('  backColor:', backColor);
+    console.log('  timestamp:', Date.now());
+    
     let canvas = document.createElement("canvas");
     let context = canvas.getContext("2d");
     let ts = calculateTextureSize(50 / 2 + 50 * 1.0) * 2;
@@ -15,11 +21,13 @@ function createTextTexture(text, color, backColor) {
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillStyle = color;
+    console.log('🎨 Canvas context.fillStyle set to:', color);
 
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
 
     context.fillText(text, centerX, centerY);
+    console.log('🎨 Canvas text drawn with color:', color, 'for text:', text);
 
     // add underline for 6 and 9 (and their variants like 60, 90)
     if (text === "6" || text === "9" || text === "60" || text === "90") {
@@ -41,6 +49,19 @@ function createTextTexture(text, color, backColor) {
 
     let texture = new THREE.Texture(canvas);
     texture.needsUpdate = true;
+    texture.flipY = true; // Fix upside down text
+    
+    // Force texture update by setting unique properties
+    texture.generateMipmaps = false;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    
+    console.log('🎨 Texture created with canvas size:', canvas.width, 'x', canvas.height);
+    console.log('🎨 Texture needsUpdate set to:', texture.needsUpdate);
+    console.log('🎨 Canvas data URL preview:', canvas.toDataURL().substring(0, 50) + '...');
+    
     return texture;
 }
 
@@ -48,7 +69,7 @@ function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
 }
 
-export function createD20Mesh(size, targetNumber, foundClosestIndex) {
+export function createD20Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#f39c12') {
     const radius = size;
     const tab = -0.2;
     const af = -Math.PI / 4 / 2;
@@ -86,20 +107,36 @@ export function createD20Mesh(size, targetNumber, foundClosestIndex) {
     for (let i = 0; i <= maxMaterialIndex; i++) {
         let texture;
         if (i === 0) {
-            texture = createTextTexture('', '#FFFFFF', '#f39c12');
+            console.log('🎨 Creating texture for face', i, 'with textColor:', textColor, 'backgroundColor:', backgroundColor);
+            texture = createTextTexture('', textColor, backgroundColor);
         } else if (i < faceValues.length) {
-            texture = createTextTexture(faceValues[i], '#FFFFFF', '#f39c12');
+            console.log('🎨 Creating texture for face', i, 'with text:', faceValues[i], 'textColor:', textColor, 'backgroundColor:', backgroundColor);
+            texture = createTextTexture(faceValues[i], textColor, backgroundColor);
         } else {
-            texture = createTextTexture('', '#FFFFFF', '#f39c12');
+            console.log('🎨 Creating texture for face', i, 'with textColor:', textColor, 'backgroundColor:', backgroundColor);
+            texture = createTextTexture('', textColor, backgroundColor);
         }
         
-        materials.push(new THREE.MeshPhongMaterial({
+        const material = new THREE.MeshPhongMaterial({
             specular: 0x172022,
-            color: 0xf0f0f0,
+            color: diceColor,
             shininess: 40,
             flatShading: true,
             map: texture
-        }));
+        });
+        
+        // Force material update with aggressive settings
+        material.needsUpdate = true;
+        material.transparent = false;
+        material.opacity = 1.0;
+        material.alphaTest = 0;
+        material.side = THREE.FrontSide;
+        
+        console.log('🎨 Material created for face', i, 'with texture:', texture);
+        console.log('🎨 Material color:', material.color.getHexString());
+        console.log('🎨 Material map UUID:', material.map.uuid);
+        
+        materials.push(material);
     }
     
     const mesh = new THREE.Mesh(geometry, materials);

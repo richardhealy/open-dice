@@ -29,7 +29,7 @@ function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
 }
 
-export function createD4Mesh(size, targetNumber, foundClosestIndex) {
+export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#9b59b6') {
     const radius = size * 1.2;
     const tab = -0.1;
     const af = Math.PI * 7 / 6;
@@ -56,10 +56,10 @@ export function createD4Mesh(size, targetNumber, foundClosestIndex) {
 
 
     for (let i = 0; i < faceTexts.length; ++i) {
-        let texture = createD4TextTexture(faceTexts[i], '#FFFFFF', '#4caf4c');
+        let texture = createD4TextTexture(faceTexts[i], textColor, backgroundColor);
         materials.push(new THREE.MeshPhongMaterial({
             specular: 0x172022,
-            color: 0xf0f0f0,
+            color: diceColor,
             shininess: 40,
             flatShading: true,
             map: texture
