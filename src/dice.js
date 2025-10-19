@@ -9,45 +9,85 @@ import { createD12Mesh, createD12Body } from './dice-models/d12.js';
 import { createD20Mesh, createD20Body } from './dice-models/d20.js';
 import { createD100Body, createD100Mesh } from './dice-models/d100.js';
 
-export function createDie(type, visible = true, isFirst = true, targetNumber, foundClosestIndex, customMaterial = null, customScene = null, customWorld = null) {
+// Color validation utility
+function isValidHexColor(color) {
+    if (typeof color === 'string') {
+        return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color);
+    }
+    return false;
+}
+
+function isValidNumericColor(color) {
+    return typeof color === 'number' && color >= 0 && color <= 0xffffff;
+}
+
+export function createDie(type, visible = true, isFirst = true, targetNumber, foundClosestIndex, customMaterial = null, customScene = null, customWorld = null, diceColor = null, textColor = null, backgroundColor = null) {
+    console.log('🎨 createDie called with colors:');
+    console.log('  type:', type);
+    console.log('  diceColor:', diceColor);
+    console.log('  textColor:', textColor);
+    console.log('  backgroundColor:', backgroundColor);
+    
     // Use custom material/scene/world if provided
     const material = customMaterial || new CANNON.Material('dice');
     const targetScene = customScene;
     const targetWorld = customWorld;
     
+    // Default colors for each die type
+    const defaultColors = {
+        d4: { diceColor: 0xf0f0f0, textColor: '#FFFFFF', backgroundColor: '#9b59b6' },
+        d6: { diceColor: 0xf0f0f0, textColor: '#FFFFFF', backgroundColor: '#e74c3c' },
+        d8: { diceColor: 0xf0f0f0, textColor: '#FFFFFF', backgroundColor: '#3498db' },
+        d10: { diceColor: 0xf0f0f0, textColor: '#FFFFFF', backgroundColor: '#2ecc71' },
+        d12: { diceColor: 0xf0f0f0, textColor: '#FFFFFF', backgroundColor: '#f39c12' },
+        d20: { diceColor: 0xf0f0f0, textColor: '#FFFFFF', backgroundColor: '#f39c12' },
+        d100: { diceColor: 0xf0f0f0, textColor: '#FFFFFF', backgroundColor: '#e67e22' }
+    };
+    
+    // Use provided colors or defaults with validation
+    const colors = defaultColors[type] || defaultColors.d6;
+    const finalDiceColor = (diceColor !== null && isValidNumericColor(diceColor)) ? diceColor : colors.diceColor;
+    const finalTextColor = (textColor !== null && isValidHexColor(textColor)) ? textColor : colors.textColor;
+    const finalBackgroundColor = (backgroundColor !== null && isValidHexColor(backgroundColor)) ? backgroundColor : colors.backgroundColor;
+    
+    console.log('🎨 Final colors being used:');
+    console.log('  finalDiceColor:', finalDiceColor);
+    console.log('  finalTextColor:', finalTextColor);
+    console.log('  finalBackgroundColor:', finalBackgroundColor);
+    
     let mesh, body;
     const size = 1;
     switch (type) {
         case 'd4':
-            mesh = createD4Mesh(size, targetNumber, foundClosestIndex);
+            mesh = createD4Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor);
             body = createD4Body(size, material);
             break;
         case 'd6':
-            mesh = createD6Mesh(size, targetNumber, foundClosestIndex);
+            mesh = createD6Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor);
             body = new CANNON.Body({ mass: 1, shape: new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2)), material: material });
             break;
         case 'd8':
-            mesh = createD8Mesh(size, targetNumber, foundClosestIndex);
+            mesh = createD8Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor);
             body = createD8Body(size, material);
             break;
         case 'd10':
-            mesh = createD10Mesh(size, targetNumber, foundClosestIndex);
+            mesh = createD10Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor);
             body = createD10Body(size, material);
             break;
         case 'd12':
-            mesh = createD12Mesh(size, targetNumber, foundClosestIndex);
+            mesh = createD12Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor);
             body = createD12Body(size, material);
             break;
         case 'd20':
-            mesh = createD20Mesh(size, targetNumber, foundClosestIndex);
+            mesh = createD20Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor);
             body = createD20Body(size, material);
             break;
         case 'd100':
-            mesh = createD100Mesh(size, targetNumber, foundClosestIndex, isFirst);
+            mesh = createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, finalDiceColor, finalTextColor, finalBackgroundColor);
             body = createD100Body(size, material);
             break;
         default:
-            mesh = createD6Mesh(size);
+            mesh = createD6Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor);
             body = new CANNON.Body({ mass: 1, shape: new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2)), material: material });
             break;
     }

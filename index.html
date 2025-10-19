@@ -21,18 +21,43 @@
             <input type="range" id="throw-spin" min="5" max="40" value="20" step="1">
         </div>
 
+        <!-- Color Customization -->
+        <div class="control-group">
+            <h3>🎨 Color Customization</h3>
+            <div class="color-controls">
+                <div class="color-row">
+                    <label for="text-color">Text Color:</label>
+                    <input type="color" id="text-color" value="#ffffff">
+                    <input type="text" id="text-color-hex" value="#FFFFFF" placeholder="#FFFFFF">
+                </div>
+                <div class="color-row">
+                    <label for="bg-color">Background Color:</label>
+                    <input type="color" id="bg-color" value="#000000">
+                    <input type="text" id="bg-color-hex" value="#000000" placeholder="#000000">
+                </div>
+            </div>
+            <button id="apply-colors">Apply Colors to All Dice</button>
+            <button id="reset-colors">Reset to Defaults</button>
+        </div>
+
         <!-- JSON Input -->
         <div class="control-group">
             <label for="json-input">Custom Dice JSON</label><br>
-            <textarea id="json-input" rows="6" cols="40">
-              [{ "dice": "d10", "rolled": 6 },
-              { "dice": "d100", "rolled": 96 },
-              { "dice": "d6", "rolled": 6 },
-              { "dice": "d8", "rolled": 9 },
-              { "dice": "d12", "rolled": 6 },
-              { "dice": "d20", "rolled": 9 }
-              ]
-            </textarea>
+            <textarea id="json-input" rows="8" cols="40">[
+    {
+        "dice": "d20",
+        "textColor": "#ffffff",
+        "backgroundColor": "#000000"
+    }
+]</textarea>
+            <div class="json-examples">
+                <h4>Color Examples:</h4>
+                <button class="example-btn" data-example="default">Default Colors</button>
+                <button class="example-btn" data-example="custom">Custom Colors</button>
+                <button class="example-btn" data-example="mixed">Mixed Colors</button>
+                <button class="example-btn" data-example="rainbow">Rainbow Colors</button>
+                <button class="example-btn" data-example="blackwhite">Black & White</button>
+            </div>
         </div>
 
         <button id="roll-button">Roll Dice</button>

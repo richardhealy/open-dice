@@ -33,7 +33,13 @@ function rollDice() {
           const repeatCount = diceRoll.dice === "d100" ? 2 : 1;
 
           for (let i = 0; i < repeatCount; i++) {
-            const die = createDie(diceRoll.dice, false, i === 0, undefined, undefined, diceMaterial, scene, world);
+            console.log('🎲 Creating die:', diceRoll.dice);
+            console.log('🎨 Color values being passed:');
+            console.log('  diceColor:', diceRoll.diceColor);
+            console.log('  textColor:', diceRoll.textColor);
+            console.log('  backgroundColor:', diceRoll.backgroundColor);
+            
+            const die = createDie(diceRoll.dice, false, i === 0, undefined, undefined, diceMaterial, scene, world, diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor);
             if (!die) return;
   
             invisibleDice.push(die);
@@ -90,7 +96,13 @@ function rollDice() {
           const repeatCount = diceRoll.dice === "d100" ? 2 : 1;
 
           for (let i = 0; i < repeatCount; i++) {
-            const die = createDie(diceRoll.dice, true, i === 0, diceRoll.rolled, closestIndexes[0], diceMaterial, scene, world);
+            console.log('🎲 Creating VISIBLE die:', diceRoll.dice);
+            console.log('🎨 Color values for visible die:');
+            console.log('  diceColor:', diceRoll.diceColor);
+            console.log('  textColor:', diceRoll.textColor);
+            console.log('  backgroundColor:', diceRoll.backgroundColor);
+            
+            const die = createDie(diceRoll.dice, true, i === 0, diceRoll.rolled, closestIndexes[0], diceMaterial, scene, world, diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor);
             if (!die) return;
 
             if (i > 0 && diceRoll.dice === 'd100') {
@@ -147,16 +159,45 @@ function rollDice() {
 }
 
 function clearDice() {
+    console.log('🧹 Clearing dice from scene...');
+    
     invisibleDice.forEach(d => {
         scene.remove(d.mesh);
         world.removeBody(d.body);
+        // Dispose of materials and textures to prevent caching
+        if (d.mesh && d.mesh.material) {
+            if (Array.isArray(d.mesh.material)) {
+                d.mesh.material.forEach(material => {
+                    if (material.map) material.map.dispose();
+                    material.dispose();
+                });
+            } else {
+                if (d.mesh.material.map) d.mesh.material.map.dispose();
+                d.mesh.material.dispose();
+            }
+        }
     });
     invisibleDice.length = 0;
+    
     dice.forEach(d => {
         scene.remove(d.mesh);
         world.removeBody(d.body);
+        // Dispose of materials and textures to prevent caching
+        if (d.mesh && d.mesh.material) {
+            if (Array.isArray(d.mesh.material)) {
+                d.mesh.material.forEach(material => {
+                    if (material.map) material.map.dispose();
+                    material.dispose();
+                });
+            } else {
+                if (d.mesh.material.map) d.mesh.material.map.dispose();
+                d.mesh.material.dispose();
+            }
+        }
     });
     dice.length = 0;
+    
+    console.log('🧹 Scene cleared!');
 }
 
 function resetDice(isNeedFade = true) {
@@ -343,3 +384,264 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
     updatePhysicsWalls(world, frustumSize, aspect, topBound, bottomBound);
 });
+
+// Initialize color controls when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('🔍 DOMContentLoaded fired - looking for color controls...');
+    
+    // Color control elements
+    const diceColorInput = document.getElementById('dice-color');
+    const diceColorHexInput = document.getElementById('dice-color-hex');
+    const textColorInput = document.getElementById('text-color');
+    const textColorHexInput = document.getElementById('text-color-hex');
+    const bgColorInput = document.getElementById('bg-color');
+    const bgColorHexInput = document.getElementById('bg-color-hex');
+    const applyColorsBtn = document.getElementById('apply-colors');
+    const resetColorsBtn = document.getElementById('reset-colors');
+
+    console.log('🔍 Element check results:');
+    console.log('  diceColorInput:', diceColorInput);
+    console.log('  diceColorHexInput:', diceColorHexInput);
+    console.log('  textColorInput:', textColorInput);
+    console.log('  textColorHexInput:', textColorHexInput);
+    console.log('  bgColorInput:', bgColorInput);
+    console.log('  bgColorHexInput:', bgColorHexInput);
+    console.log('  applyColorsBtn:', applyColorsBtn);
+    console.log('  resetColorsBtn:', resetColorsBtn);
+
+    if (!diceColorInput || !applyColorsBtn) {
+        console.error('❌ Color control elements not found!');
+        console.error('Available elements:', document.querySelectorAll('[id*="color"], [id*="apply"], [id*="reset"]'));
+        return;
+    }
+
+    console.log('🎨 Color controls initialized successfully!');
+
+    // Color control functionality
+    function hexToNumeric(hex) {
+        if (hex.startsWith('#')) {
+            return parseInt(hex.slice(1), 16);
+        }
+        return parseInt(hex, 16);
+    }
+
+    function numericToHex(numeric) {
+        return '#' + numeric.toString(16).padStart(6, '0');
+    }
+
+    // Sync color picker with hex input
+    diceColorInput.addEventListener('input', () => {
+        console.log('🎨 diceColorInput changed:', diceColorInput.value);
+        const hex = diceColorInput.value;
+        diceColorHexInput.value = '0x' + hex.slice(1);
+        console.log('🎨 Updated diceColorHexInput to:', diceColorHexInput.value);
+    });
+
+    textColorInput.addEventListener('input', () => {
+        console.log('🎨 textColorInput changed:', textColorInput.value);
+        textColorHexInput.value = textColorInput.value.toUpperCase();
+        console.log('🎨 Updated textColorHexInput to:', textColorHexInput.value);
+    });
+
+    bgColorInput.addEventListener('input', () => {
+        console.log('🎨 bgColorInput changed:', bgColorInput.value);
+        bgColorHexInput.value = bgColorInput.value;
+        console.log('🎨 Updated bgColorHexInput to:', bgColorHexInput.value);
+    });
+
+    // Sync hex input with color picker
+    diceColorHexInput.addEventListener('input', () => {
+        let hex = diceColorHexInput.value;
+        if (hex.startsWith('0x')) {
+            hex = '#' + hex.slice(2);
+        } else if (!hex.startsWith('#')) {
+            hex = '#' + hex;
+        }
+        diceColorInput.value = hex;
+    });
+
+    textColorHexInput.addEventListener('input', () => {
+        let hex = textColorHexInput.value;
+        if (!hex.startsWith('#')) {
+            hex = '#' + hex;
+        }
+        textColorInput.value = hex;
+    });
+
+    bgColorHexInput.addEventListener('input', () => {
+        let hex = bgColorHexInput.value;
+        if (!hex.startsWith('#')) {
+            hex = '#' + hex;
+        }
+        bgColorInput.value = hex;
+    });
+
+    // Apply colors to all dice in JSON
+    applyColorsBtn.addEventListener('click', () => {
+        console.log('🎨 Apply Colors button clicked!');
+        console.log('🎨 Current values:');
+        console.log('  diceColorInput.value:', diceColorInput.value);
+        console.log('  textColorInput.value:', textColorInput.value);
+        console.log('  bgColorInput.value:', bgColorInput.value);
+        
+        const diceColor = hexToNumeric(diceColorInput.value);
+        const textColor = textColorInput.value.toUpperCase();
+        const bgColor = bgColorInput.value;
+        
+        console.log('🎨 Converted values:');
+        console.log('  diceColor (numeric):', diceColor);
+        console.log('  textColor:', textColor);
+        console.log('  bgColor:', bgColor);
+        
+        try {
+            const diceConfig = JSON.parse(jsonInput.value);
+            console.log('🎨 Original dice config:', diceConfig);
+            
+            const updatedConfig = diceConfig.map(dice => ({
+                ...dice,
+                diceColor: diceColor,
+                textColor: textColor,
+                backgroundColor: bgColor
+            }));
+            
+            console.log('🎨 Updated dice config:', updatedConfig);
+            jsonInput.value = JSON.stringify(updatedConfig, null, 2);
+            console.log('✅ Colors applied to all dice!');
+        } catch (error) {
+            console.error('❌ Invalid JSON:', error);
+            alert('Invalid JSON configuration');
+        }
+    });
+
+    // Reset colors to defaults
+    resetColorsBtn.addEventListener('click', () => {
+        diceColorInput.value = '#f0f0f0';
+        diceColorHexInput.value = '0xf0f0f0';
+        textColorInput.value = '#ffffff';
+        textColorHexInput.value = '#FFFFFF';
+        bgColorInput.value = '#e74c3c';
+        bgColorHexInput.value = '#e74c3c';
+        console.log('🔄 Colors reset to defaults');
+    });
+
+    // Example JSON configurations
+    const exampleConfigs = {
+        default: [
+            { "dice": "d6" },
+            { "dice": "d20" },
+            { "dice": "d8" }
+        ],
+        custom: [
+            { 
+                "dice": "d6", 
+                "diceColor": 0xff6b6b, 
+                "textColor": "#FFFFFF", 
+                "backgroundColor": "#4ECDC4" 
+            },
+            { 
+                "dice": "d20", 
+                "diceColor": 0x95e1d3, 
+                "textColor": "#2C3E50", 
+                "backgroundColor": "#F38BA8" 
+            },
+            { 
+                "dice": "d8", 
+                "diceColor": 0xffd93d, 
+                "textColor": "#000000", 
+                "backgroundColor": "#6BCF7F" 
+            }
+        ],
+        mixed: [
+            { "dice": "d6" },
+            { 
+                "dice": "d20", 
+                "diceColor": 0xff9ff3, 
+                "textColor": "#2C3E50", 
+                "backgroundColor": "#54a0ff" 
+            },
+            { "dice": "d8" }
+        ],
+        rainbow: [
+            { 
+                "dice": "d4", 
+                "diceColor": 0xff6b6b, 
+                "textColor": "#FFFFFF", 
+                "backgroundColor": "#FF6B6B" 
+            },
+            { 
+                "dice": "d6", 
+                "diceColor": 0x4ecdc4, 
+                "textColor": "#FFFFFF", 
+                "backgroundColor": "#4ECDC4" 
+            },
+            { 
+                "dice": "d8", 
+                "diceColor": 0x45b7d1, 
+                "textColor": "#FFFFFF", 
+                "backgroundColor": "#45B7D1" 
+            },
+            { 
+                "dice": "d10", 
+                "diceColor": 0x96ceb4, 
+                "textColor": "#FFFFFF", 
+                "backgroundColor": "#96CEB4" 
+            },
+            { 
+                "dice": "d12", 
+                "diceColor": 0xfeca57, 
+                "textColor": "#2C3E50", 
+                "backgroundColor": "#FECA57" 
+            },
+            { 
+                "dice": "d20", 
+                "diceColor": 0xff9ff3, 
+                "textColor": "#2C3E50", 
+                "backgroundColor": "#FF9FF3" 
+            }
+        ],
+        blackwhite: [
+            {
+                "dice": "d20",
+                "diceColor": 16752627,
+                "textColor": "#ffffff",
+                "backgroundColor": "#000000"
+            }
+        ]
+    };
+
+    // Example buttons
+    console.log('🔍 Setting up example buttons...');
+    const exampleButtons = document.querySelectorAll('.example-btn');
+    console.log('🔍 Found example buttons:', exampleButtons.length);
+    
+    exampleButtons.forEach((btn, index) => {
+        console.log(`🔍 Setting up button ${index}:`, btn.dataset.example);
+        btn.addEventListener('click', () => {
+            console.log('🎨 Example button clicked:', btn.dataset.example);
+            const example = btn.dataset.example;
+            if (exampleConfigs[example]) {
+                console.log('🎨 Loading example config:', exampleConfigs[example]);
+                jsonInput.value = JSON.stringify(exampleConfigs[example], null, 2);
+                
+                // Update active button
+                document.querySelectorAll('.example-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                console.log(`🎨 Loaded ${example} color example`);
+            } else {
+                console.error('❌ Example config not found:', example);
+            }
+        });
+    });
+});
+
+// Fallback initialization in case DOMContentLoaded already fired
+console.log('🔍 Script loaded - checking if DOM is ready...');
+if (document.readyState === 'loading') {
+    console.log('🔍 DOM still loading, waiting for DOMContentLoaded...');
+} else {
+    console.log('🔍 DOM already ready, initializing color controls immediately...');
+    // Trigger the same initialization
+    const event = new Event('DOMContentLoaded');
+    document.dispatchEvent(event);
+}

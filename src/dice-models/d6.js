@@ -47,7 +47,7 @@ function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
 }
 
-export function createD6Mesh(size, targetNumber, foundClosestIndex) {
+export function createD6Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#e74c3c') {
     const radius = size * 0.9;
     const tab = 0.1;
     const af = Math.PI / 4;
@@ -84,16 +84,16 @@ export function createD6Mesh(size, targetNumber, foundClosestIndex) {
     for (let i = 0; i <= maxMaterialIndex; i++) {
         let texture;
         if (i === 0) {
-            texture = createTextTexture('', '#FFFFFF', '#e74c3c');
+            texture = createTextTexture('', textColor, backgroundColor);
         } else if (i < faceValues.length) {
-            texture = createTextTexture(faceValues[i], '#FFFFFF', '#e74c3c');
+            texture = createTextTexture(faceValues[i], textColor, backgroundColor);
         } else {
-            texture = createTextTexture('', '#FFFFFF', '#e74c3c');
+            texture = createTextTexture('', textColor, backgroundColor);
         }
         
         materials.push(new THREE.MeshPhongMaterial({
             specular: 0x172022,
-            color: 0xf0f0f0,
+            color: diceColor,
             shininess: 40,
             flatShading: true,
             map: texture

@@ -264,7 +264,16 @@ export class DiceRoller {
                     const repeatCount = diceRoll.dice === "d100" ? 2 : 1;
 
                     for (let i = 0; i < repeatCount; i++) {
-                        const die = this._createDieInstance(diceRoll.dice, false, i === 0);
+                        const die = this._createDieInstance(
+                            diceRoll.dice, 
+                            false, 
+                            i === 0, 
+                            diceRoll.rolled, 
+                            null, 
+                            diceRoll.diceColor, 
+                            diceRoll.textColor, 
+                            diceRoll.backgroundColor
+                        );
                         if (!die) continue;
 
                         this.invisibleDice.push(die);
@@ -289,8 +298,14 @@ export class DiceRoller {
 
                     for (let i = 0; i < repeatCount; i++) {
                         const die = this._createDieInstance(
-                            diceRoll.dice, true, i === 0,
-                            diceRoll.rolled, this.closestIndexes[0]
+                            diceRoll.dice, 
+                            true, 
+                            i === 0,
+                            diceRoll.rolled, 
+                            this.closestIndexes[0],
+                            diceRoll.diceColor, 
+                            diceRoll.textColor, 
+                            diceRoll.backgroundColor
                         );
                         if (!die) continue;
 
@@ -324,8 +339,8 @@ export class DiceRoller {
      * Create a die instance
      * @private
      */
-    _createDieInstance(type, visible, isFirst, targetNumber, foundClosestIndex) {
-        const die = createDie(type, visible, isFirst, targetNumber, foundClosestIndex, this.diceMaterial, this.scene, this.world);
+    _createDieInstance(type, visible, isFirst, targetNumber, foundClosestIndex, diceColor, textColor, backgroundColor) {
+        const die = createDie(type, visible, isFirst, targetNumber, foundClosestIndex, this.diceMaterial, this.scene, this.world, diceColor, textColor, backgroundColor);
         if (!die) return null;
 
         return die;
