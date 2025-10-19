@@ -19,18 +19,48 @@ body {
     position: fixed;
     top: 20px;
     left: 20px;
-    width: 300px;
-    background-color: rgba(45, 55, 72, 0.85);
+    width: 280px;
+    max-height: calc(100vh - 40px);
+    background-color: rgba(45, 55, 72, 0.95);
     padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
     color: #FFFFFF;
     z-index: 10;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Custom scrollbar */
+#ui-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+#ui-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+#ui-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 123, 255, 0.6);
+    border-radius: 4px;
+}
+
+#ui-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 123, 255, 0.8);
 }
 #ui-container button {
     margin-top: 10px;
 }
-h2, h3 {
+h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #007bff;
+    padding-bottom: 10px;
+    font-size: 1.4em;
+}
+
+h3 {
     margin-top: 0;
     border-bottom: 1px solid #444;
     padding-bottom: 10px;
@@ -59,28 +89,51 @@ select, input, button {
     font-size: 1em;
     box-sizing: border-box;
 }
+
+select[multiple] {
+    padding: 5px;
+}
+
+select option {
+    padding: 8px;
+    border-radius: 4px;
+    margin: 2px 0;
+}
+
+select option:checked {
+    background: linear-gradient(0deg, #007bff 0%, #0056b3 100%);
+}
 input[type="range"] {
     padding: 0;
 }
 button {
     width: 100%;
-    padding: 10px;
+    padding: 12px;
     background-color: #007bff;
     border: none;
     cursor: pointer;
-    transition: background 0.3s;
+    transition: all 0.3s;
     font-weight: bold;
+    font-size: 1.05em;
 }
 button:hover {
     background-color: #0056b3;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
+}
+
+button:active {
+    transform: translateY(0);
 }
 
 #reset-button {
-    background-color: #64748b; /* Slate Gray */
+    background-color: #64748b;
+    margin-top: 8px;
 }
 
 #reset-button:hover {
-    background-color: #475569; /* Darker Slate Gray */
+    background-color: #475569;
+    box-shadow: 0 4px 12px rgba(100, 116, 139, 0.4);
 }
 
 #results-container {

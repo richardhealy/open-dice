@@ -11,6 +11,8 @@ A beautiful 3D physics-based dice rolling engine built with Three.js and Cannon.
 - 🔧 Easy-to-use API
 - 📦 Lightweight and modular
 - 🎭 Customizable throw speed and spin
+- 🌈 Customizable dice colors (dice body, text, and background)
+- 🔒 Secret roll mode (hides numbers with "?")
 
 ## 📦 Installation
 
@@ -107,6 +109,9 @@ Roll dice with the given configuration.
 - `diceConfig` (Array): Array of dice configurations
   - `dice` (string): Type of die - `'d4'`, `'d6'`, `'d8'`, `'d10'`, `'d12'`, `'d20'`, or `'d100'`
   - `rolled` (number, optional): Target number for the roll
+  - `diceColor` (number, optional): Dice body color as numeric hex (e.g., `0xf0f0f0`)
+  - `textColor` (string, optional): Text color as hex string (e.g., `'#FFFFFF'`)
+  - `backgroundColor` (string, optional): Background color as hex string (e.g., `'#e74c3c'`)
 
 **Returns:** `Promise<number>` - Promise that resolves with the total roll result
 
@@ -192,6 +197,32 @@ await diceRoller.roll([
     { dice: 'd100', rolled: 96 }
 ]);
 ```
+
+### Custom Dice Colors
+
+```javascript
+// Customize dice appearance with custom colors
+await diceRoller.roll([
+    { 
+        dice: 'd20', 
+        diceColor: 0xff6b6b,        // Red dice body
+        textColor: '#FFFFFF',        // White text
+        backgroundColor: '#4ECDC4'   // Teal background
+    },
+    { 
+        dice: 'd6', 
+        diceColor: 0x95e1d3,        // Mint green dice body
+        textColor: '#2C3E50',        // Dark blue text
+        backgroundColor: '#F38BA8'   // Pink background
+    }
+]);
+```
+
+### Secret Roll Mode
+
+The demo application includes a "Secret Roll" checkbox that hides all dice numbers with "?" characters. This is useful for GM rolls or surprise mechanics where you don't want players to see the actual result until revealed.
+
+**Note:** The secret roll mode is available in the demo UI. If you need this functionality in your integration, you'll need to implement it by passing an `isSecret` parameter through your roll configuration.
 
 ### With Custom UI Controls
 
@@ -348,6 +379,26 @@ npm run build
 | `d100` | Percentile die (two d10s) | 00-99 or 1-100 |
 
 ## 📝 Changelog
+
+### [1.1.0] - 2025-10-19
+
+#### ✨ New Features
+
+**Customization:**
+- 🌈 Added dice color customization support
+  - `diceColor`: Customize dice body color (numeric hex format)
+  - `textColor`: Customize text color (hex string format)
+  - `backgroundColor`: Customize face background color (hex string format)
+- 🔒 Added secret roll mode
+  - All dice numbers replaced with "?" characters
+  - Perfect for GM rolls or surprise mechanics
+  - Available via UI checkbox in demo
+
+**Demo UI Improvements:**
+- 🎨 Added color picker controls for easy color customization
+- 🎯 Quick apply colors to all dice in configuration
+- 📝 Multiple color preset examples
+- ✨ Real-time color synchronization between pickers and hex inputs
 
 ### [1.0.0] - 2025-10-03
 

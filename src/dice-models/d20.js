@@ -69,7 +69,7 @@ function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
 }
 
-export function createD20Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#f39c12') {
+export function createD20Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#f39c12', isSecret = false) {
     const radius = size;
     const tab = -0.2;
     const af = -Math.PI / 4 / 2;
@@ -110,8 +110,10 @@ export function createD20Mesh(size, targetNumber, foundClosestIndex, diceColor =
             console.log('🎨 Creating texture for face', i, 'with textColor:', textColor, 'backgroundColor:', backgroundColor);
             texture = createTextTexture('', textColor, backgroundColor);
         } else if (i < faceValues.length) {
-            console.log('🎨 Creating texture for face', i, 'with text:', faceValues[i], 'textColor:', textColor, 'backgroundColor:', backgroundColor);
-            texture = createTextTexture(faceValues[i], textColor, backgroundColor);
+            // Use "?" if secret mode is enabled
+            const displayText = isSecret ? '?' : faceValues[i];
+            console.log('🎨 Creating texture for face', i, 'with text:', displayText, 'textColor:', textColor, 'backgroundColor:', backgroundColor);
+            texture = createTextTexture(displayText, textColor, backgroundColor);
         } else {
             console.log('🎨 Creating texture for face', i, 'with textColor:', textColor, 'backgroundColor:', backgroundColor);
             texture = createTextTexture('', textColor, backgroundColor);

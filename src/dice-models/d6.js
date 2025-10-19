@@ -47,7 +47,7 @@ function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
 }
 
-export function createD6Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#e74c3c') {
+export function createD6Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#e74c3c', isSecret = false) {
     const radius = size * 0.9;
     const tab = 0.1;
     const af = Math.PI / 4;
@@ -86,7 +86,9 @@ export function createD6Mesh(size, targetNumber, foundClosestIndex, diceColor = 
         if (i === 0) {
             texture = createTextTexture('', textColor, backgroundColor);
         } else if (i < faceValues.length) {
-            texture = createTextTexture(faceValues[i], textColor, backgroundColor);
+            // Use "?" if secret mode is enabled
+            const displayText = isSecret ? '?' : faceValues[i];
+            texture = createTextTexture(displayText, textColor, backgroundColor);
         } else {
             texture = createTextTexture('', textColor, backgroundColor);
         }

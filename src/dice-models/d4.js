@@ -29,7 +29,7 @@ function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
 }
 
-export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#9b59b6') {
+export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#9b59b6', isSecret = false) {
     const radius = size * 1.2;
     const tab = -0.1;
     const af = Math.PI * 7 / 6;
@@ -48,6 +48,8 @@ export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 
 
     const faceTexts = d4FaceTexts[0].map(subArray =>
       subArray.map(n => {
+        // Use "?" if secret mode is enabled
+        if (isSecret && n !== 0) return '?';
         if (n === foundClosestIndex) return targetNumber;
         if (n === targetNumber) return foundClosestIndex;
         return n;
