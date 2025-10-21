@@ -272,7 +272,8 @@ export class DiceRoller {
                             null, 
                             diceRoll.diceColor, 
                             diceRoll.textColor, 
-                            diceRoll.backgroundColor
+                            diceRoll.backgroundColor,
+                            diceRoll.isSecret
                         );
                         if (!die) continue;
 
@@ -305,7 +306,8 @@ export class DiceRoller {
                             this.closestIndexes[0],
                             diceRoll.diceColor, 
                             diceRoll.textColor, 
-                            diceRoll.backgroundColor
+                            diceRoll.backgroundColor,
+                            diceRoll.isSecret
                         );
                         if (!die) continue;
 
@@ -339,8 +341,8 @@ export class DiceRoller {
      * Create a die instance
      * @private
      */
-    _createDieInstance(type, visible, isFirst, targetNumber, foundClosestIndex, diceColor, textColor, backgroundColor) {
-        const die = createDie(type, visible, isFirst, targetNumber, foundClosestIndex, this.diceMaterial, this.scene, this.world, diceColor, textColor, backgroundColor);
+    _createDieInstance(type, visible, isFirst, targetNumber, foundClosestIndex, diceColor, textColor, backgroundColor, isSecret) {
+        const die = createDie(type, visible, isFirst, targetNumber, foundClosestIndex, this.diceMaterial, this.scene, this.world, diceColor, textColor, backgroundColor, isSecret);
         if (!die) return null;
 
         return die;

@@ -112,6 +112,7 @@ Roll dice with the given configuration.
   - `diceColor` (number, optional): Dice body color as numeric hex (e.g., `0xf0f0f0`)
   - `textColor` (string, optional): Text color as hex string (e.g., `'#FFFFFF'`)
   - `backgroundColor` (string, optional): Background color as hex string (e.g., `'#e74c3c'`)
+  - `isSecret` (boolean, optional): Hide numbers with "?" for secret rolls (default: `false`)
 
 **Returns:** `Promise<number>` - Promise that resolves with the total roll result
 
@@ -220,9 +221,23 @@ await diceRoller.roll([
 
 ### Secret Roll Mode
 
-The demo application includes a "Secret Roll" checkbox that hides all dice numbers with "?" characters. This is useful for GM rolls or surprise mechanics where you don't want players to see the actual result until revealed.
+You can enable secret roll mode to hide all dice numbers with "?" characters. This is useful for GM rolls or surprise mechanics where you don't want players to see the actual result until revealed.
 
-**Note:** The secret roll mode is available in the demo UI. If you need this functionality in your integration, you'll need to implement it by passing an `isSecret` parameter through your roll configuration.
+```javascript
+// Roll dice with secret mode enabled
+await diceRoller.roll([
+    { dice: 'd20', isSecret: true },
+    { dice: 'd6', isSecret: true }
+]);
+
+// Mix secret and non-secret dice
+await diceRoller.roll([
+    { dice: 'd20', isSecret: true },  // Hidden
+    { dice: 'd6', isSecret: false }   // Visible
+]);
+```
+
+**Note:** The demo application includes a "Secret Roll" checkbox in the UI for easy toggling.
 
 ### With Custom UI Controls
 
