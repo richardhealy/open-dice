@@ -1,473 +1,499 @@
 # 🎲 Open Dice DnD
 
-A beautiful 3D physics-based dice rolling engine built with Three.js and Cannon.js. Perfect for adding realistic dice rolling to your web applications, games, or tabletop RPG tools!
+A 3D physics-based dice rolling engine built with Three.js and Cannon-es. Designed for tabletop tools, RPG apps, and game UIs.
 
 ## ✨ Features
 
-- 🎯 Physics-based dice rolling with realistic behavior
-- 🎨 Support for multiple dice types: d4, d6, d8, d10, d12, d20, d100
-- 🎬 Smooth animations and shadows
-- 📱 Responsive and works on any container size
-- 🔧 Easy-to-use API
-- 📦 Lightweight and modular
-- 🎭 Customizable throw speed and spin
-- 🌈 Customizable dice colors (dice body, text, and background)
-- 🔒 Secret roll mode (hides numbers with "?")
+- 🎯 Physics-based rolling with authoritative pre-determined results (server-friendly)
+- 🎨 All standard RPG dice — d4, d6, d8, d10, d12, d20, d100
+- 🎬 Smooth animations + shadow rendering
+- 🎭 Mid-roll dice additions, multi-batch concurrent rolls
+- 🖼️ Custom SVG face decals (per face value, with scale/offset/rotation)
+- 🔊 Collision sound effects with impact-based volume
+- 🎆 9 spell-school damage-type effects: fire, frost, electric, acid, psychic, necrotic, radiant, thunder, slashing (plus blood splat)
+- 🌟 7 settled-state effects: glow, scale pulse, halo ring, screen shake, slow-mo zoom, particle burst, confetti
+- 🧠 Declarative rule-based effect composition (match by type/value, play combos)
+- 🔒 Secret roll mode
+- 🌈 Per-die colors (body, text, background)
+- 📦 Lightweight, modular, no UI framework lock-in
+
+---
 
 ## 📦 Installation
-
-### Via npm
 
 ```bash
 npm install open-dice-dnd
 ```
 
-### Local Development
+`three` and `cannon-es` are peer dependencies — install them too if you don't already have them.
 
 ```bash
-git clone <repository-url>
-cd open-dice-dnd
-npm install
+npm install three cannon-es
 ```
-
-## 🚀 Quick Start
-
-### Basic Usage
-
-```javascript
-import { DiceRoller } from 'open-dice-dnd';
-
-// Get your container element
-const container = document.getElementById('dice-container');
-
-// Create a new dice roller instance
-const diceRoller = new DiceRoller({
-    container: container,
-    throwSpeed: 15,
-    throwSpin: 20,
-    onRollComplete: (total) => {
-        console.log('Roll total:', total);
-    }
-});
-
-// Roll some dice!
-const diceConfig = [
-    { dice: 'd20', rolled: 15 },
-    { dice: 'd6', rolled: 4 }
-];
-
-diceRoller.roll(diceConfig).then(total => {
-    console.log('Dice settled! Total:', total);
-});
-```
-
-### HTML Setup
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        #dice-container {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-        }
-    </style>
-</head>
-<body>
-    <div id="dice-container"></div>
-    <script type="module" src="main.js"></script>
-</body>
-</html>
-```
-
-## 📖 API Reference
-
-### `new DiceRoller(options)`
-
-Creates a new dice roller instance.
-
-#### Options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `container` | HTMLElement | **Required** | The DOM element to render the canvas in |
-| `width` | number | Container width | Canvas width in pixels |
-| `height` | number | Container height | Canvas height in pixels |
-| `throwSpeed` | number | `15` | Initial throw speed (5-30) |
-| `throwSpin` | number | `20` | Initial throw spin (5-40) |
-| `onRollComplete` | function | `null` | Callback function when dice settle |
-
-### Methods
-
-#### `roll(diceConfig)`
-
-Roll dice with the given configuration.
-
-**Parameters:**
-- `diceConfig` (Array): Array of dice configurations
-  - `dice` (string): Type of die - `'d4'`, `'d6'`, `'d8'`, `'d10'`, `'d12'`, `'d20'`, or `'d100'`
-  - `rolled` (number, optional): Target number for the roll
-  - `diceColor` (number, optional): Dice body color as numeric hex (e.g., `0xf0f0f0`)
-  - `textColor` (string, optional): Text color as hex string (e.g., `'#FFFFFF'`)
-  - `backgroundColor` (string, optional): Background color as hex string (e.g., `'#e74c3c'`)
-  - `isSecret` (boolean, optional): Hide numbers with "?" for secret rolls (default: `false`)
-
-**Returns:** `Promise<number>` - Promise that resolves with the total roll result
-
-**Example:**
-```javascript
-const result = await diceRoller.roll([
-    { dice: 'd20', rolled: 18 },
-    { dice: 'd6' },
-    { dice: 'd8', rolled: 5 }
-]);
-console.log('Total:', result);
-```
-
-#### `reset()`
-
-Reset and clear all dice from the scene with a fade animation.
-
-**Returns:** `Promise<void>`
-
-**Example:**
-```javascript
-await diceRoller.reset();
-```
-
-#### `setThrowSpeed(speed)`
-
-Update the throw speed.
-
-**Parameters:**
-- `speed` (number): New throw speed (recommended: 5-30)
-
-**Example:**
-```javascript
-diceRoller.setThrowSpeed(20);
-```
-
-#### `setThrowSpin(spin)`
-
-Update the throw spin.
-
-**Parameters:**
-- `spin` (number): New throw spin (recommended: 5-40)
-
-**Example:**
-```javascript
-diceRoller.setThrowSpin(25);
-```
-
-#### `destroy()`
-
-Destroy the dice roller instance and clean up all resources.
-
-**Example:**
-```javascript
-diceRoller.destroy();
-```
-
-## 🎮 Examples
-
-### Rolling Multiple Dice Types
-
-```javascript
-const diceRoller = new DiceRoller({
-    container: document.getElementById('dice-container')
-});
-
-// Roll a variety of dice
-await diceRoller.roll([
-    { dice: 'd20' },
-    { dice: 'd12' },
-    { dice: 'd10' },
-    { dice: 'd8' },
-    { dice: 'd6' },
-    { dice: 'd4' }
-]);
-```
-
-### D100 (Percentile) Dice
-
-```javascript
-// D100 automatically rolls two d10s
-await diceRoller.roll([
-    { dice: 'd100', rolled: 96 }
-]);
-```
-
-### Custom Dice Colors
-
-```javascript
-// Customize dice appearance with custom colors
-await diceRoller.roll([
-    { 
-        dice: 'd20', 
-        diceColor: 0xff6b6b,        // Red dice body
-        textColor: '#FFFFFF',        // White text
-        backgroundColor: '#4ECDC4'   // Teal background
-    },
-    { 
-        dice: 'd6', 
-        diceColor: 0x95e1d3,        // Mint green dice body
-        textColor: '#2C3E50',        // Dark blue text
-        backgroundColor: '#F38BA8'   // Pink background
-    }
-]);
-```
-
-### Secret Roll Mode
-
-You can enable secret roll mode to hide all dice numbers with "?" characters. This is useful for GM rolls or surprise mechanics where you don't want players to see the actual result until revealed.
-
-```javascript
-// Roll dice with secret mode enabled
-await diceRoller.roll([
-    { dice: 'd20', isSecret: true },
-    { dice: 'd6', isSecret: true }
-]);
-
-// Mix secret and non-secret dice
-await diceRoller.roll([
-    { dice: 'd20', isSecret: true },  // Hidden
-    { dice: 'd6', isSecret: false }   // Visible
-]);
-```
-
-**Note:** The demo application includes a "Secret Roll" checkbox in the UI for easy toggling.
-
-### With Custom UI Controls
-
-```javascript
-const diceRoller = new DiceRoller({
-    container: document.getElementById('dice-container'),
-    onRollComplete: (total) => {
-        document.getElementById('result').textContent = `Total: ${total}`;
-    }
-});
-
-// Button click handler
-document.getElementById('roll-btn').addEventListener('click', () => {
-    diceRoller.roll([
-        { dice: 'd20' },
-        { dice: 'd6' }
-    ]);
-});
-
-// Reset button handler
-document.getElementById('reset-btn').addEventListener('click', () => {
-    diceRoller.reset();
-});
-```
-
-### React Integration
-
-```jsx
-import { useEffect, useRef, useState } from 'react';
-import { DiceRoller } from 'open-dice-dnd';
-
-function DiceComponent() {
-    const containerRef = useRef(null);
-    const diceRollerRef = useRef(null);
-    const [result, setResult] = useState(null);
-
-    useEffect(() => {
-        if (containerRef.current && !diceRollerRef.current) {
-            diceRollerRef.current = new DiceRoller({
-                container: containerRef.current,
-                onRollComplete: (total) => {
-                    setResult(total);
-                }
-            });
-        }
-
-        return () => {
-            if (diceRollerRef.current) {
-                diceRollerRef.current.destroy();
-            }
-        };
-    }, []);
-
-    const handleRoll = () => {
-        diceRollerRef.current?.roll([
-            { dice: 'd20' },
-            { dice: 'd6' }
-        ]);
-    };
-
-    return (
-        <div>
-            <div ref={containerRef} style={{ width: '100%', height: '500px' }} />
-            <button onClick={handleRoll}>Roll Dice</button>
-            {result && <p>Total: {result}</p>}
-        </div>
-    );
-}
-```
-
-### Vue Integration
-
-```vue
-<template>
-    <div>
-        <div ref="containerRef" style="width: 100%; height: 500px;"></div>
-        <button @click="handleRoll">Roll Dice</button>
-        <p v-if="result">Total: {{ result }}</p>
-    </div>
-</template>
-
-<script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
-import { DiceRoller } from 'open-dice-dnd';
-
-const containerRef = ref(null);
-const result = ref(null);
-let diceRoller = null;
-
-onMounted(() => {
-    if (containerRef.value) {
-        diceRoller = new DiceRoller({
-            container: containerRef.value,
-            onRollComplete: (total) => {
-                result.value = total;
-            }
-        });
-    }
-});
-
-onUnmounted(() => {
-    if (diceRoller) {
-        diceRoller.destroy();
-    }
-});
-
-const handleRoll = () => {
-    if (diceRoller) {
-        diceRoller.roll([
-            { dice: 'd20' },
-            { dice: 'd6' }
-        ]);
-    }
-};
-</script>
-```
-
-## 🛠️ Development
-
-### Running the Demo
-
-```bash
-npm run dev
-```
-
-Then open your browser to `http://localhost:5173`
-
-### Building the Library
-
-```bash
-npm run build:lib
-```
-
-This creates the distributable files in the `dist/` directory:
-- `open-dice-dnd.es.js` - ES module format
-- `open-dice-dnd.umd.js` - UMD format (for browsers and Node.js)
-
-### Building the Demo
-
-```bash
-npm run build
-```
-
-## 📝 Dice Types
-
-| Type | Description | Range |
-|------|-------------|-------|
-| `d4` | 4-sided die | 1-4 |
-| `d6` | 6-sided die (standard cube) | 1-6 |
-| `d8` | 8-sided die | 1-8 |
-| `d10` | 10-sided die | 0-9 or 1-10 |
-| `d12` | 12-sided die | 1-12 |
-| `d20` | 20-sided die | 1-20 |
-| `d100` | Percentile die (two d10s) | 00-99 or 1-100 |
-
-## 📝 Changelog
-
-### [1.1.0] - 2025-10-19
-
-#### ✨ New Features
-
-**Customization:**
-- 🌈 Added dice color customization support
-  - `diceColor`: Customize dice body color (numeric hex format)
-  - `textColor`: Customize text color (hex string format)
-  - `backgroundColor`: Customize face background color (hex string format)
-- 🔒 Added secret roll mode
-  - All dice numbers replaced with "?" characters
-  - Perfect for GM rolls or surprise mechanics
-  - Available via UI checkbox in demo
-
-**Demo UI Improvements:**
-- 🎨 Added color picker controls for easy color customization
-- 🎯 Quick apply colors to all dice in configuration
-- 📝 Multiple color preset examples
-- ✨ Real-time color synchronization between pickers and hex inputs
-
-### [1.0.0] - 2025-10-03
-
-#### 🎉 Initial Release
-
-**Core Features:**
-- ✨ 3D physics-based dice rolling engine
-- 🎲 Support for all standard RPG dice types (d4, d6, d8, d10, d12, d20, d100)
-- 🎯 Realistic physics simulation using Cannon.js
-- 🎨 Beautiful 3D rendering with Three.js
-- 📱 Responsive design that works on any container size
-
-**API:**
-- 🔧 Class-based `DiceRoller` API for easy integration
-- ⚡ Promise-based roll method for async/await support
-- 🎪 Event callbacks for roll completion
-- 🎛️ Customizable throw speed and spin
-- 🧹 Automatic resource cleanup and memory management
-
-**Developer Experience:**
-- 📦 Available as npm package: `open-dice-dnd`
-- 📚 Comprehensive documentation with examples
-- ⚛️ React integration example
-- 💚 Vue integration example
-- 🎮 Live demo included
-
-**Build & Distribution:**
-- 📦 ES module format (7.83 kB gzipped)
-- 🌐 UMD format for browser compatibility
-- 🌲 Tree-shakeable exports
-- 🔗 Peer dependencies for optimal bundle size
-
-**License:**
-- 📄 MIT License
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## 📄 License
-
-MIT License - see LICENSE file for details
-
-## 🙏 Credits
-
-Built with:
-- [Three.js](https://threejs.org/) - 3D graphics
-- [Cannon.js](https://schteppe.github.io/cannon.js/) - Physics engine
-- [Vite](https://vitejs.dev/) - Build tool
-
-## 📮 Support
-
-If you encounter any issues or have questions, please file an issue on the GitHub repository.
 
 ---
 
-Made with ❤️ for tabletop gaming enthusiasts and web developers
+## 🚀 Quick Start
+
+```js
+import { DiceRoller } from 'open-dice-dnd';
+
+const diceRoller = new DiceRoller({
+    container: document.getElementById('dice-container'),
+    onRollComplete: (total) => console.log('Total:', total),
+});
+
+await diceRoller.roll([
+    { dice: 'd20', rolled: 15 },
+    { dice: 'd6',  rolled: 4 },
+]);
+```
+
+---
+
+## 📖 API
+
+### Constructor
+
+```js
+new DiceRoller({
+    container,           // HTMLElement (required)
+    width,               // number, defaults to container width
+    height,              // number, defaults to container height
+    throwSpeed,          // number, default 15
+    throwSpin,           // number, default 20
+    onRollComplete,      // (total, result) => void
+    onBatchSettled,      // (batch, result, roller) => void
+    sounds,              // string[] of audio URLs (collision sfx)
+    soundVolume,         // number 0..1, default 1
+    effects,             // rule list — see "Settled Effects"
+})
+```
+
+### Roll methods
+
+| Method | Returns | Behavior |
+|---|---|---|
+| `roll(diceConfig)` | `Promise<number>` (total) | Clear scene, roll fresh batch |
+| `addDice(diceConfig)` | `Promise<{total, variances, results}>` | Add dice to active or settled scene, independent batch |
+| `reset()` | `Promise<void>` | Fade out and clear all dice |
+| `getCurrentResults()` | `{total, variances, results}` | Re-evaluate every die in the scene |
+| `isRolling()` | `boolean` | True if any batch is still unresolved |
+| `setEffectRules(rules)` | `void` | Replace settled-effect rules at runtime |
+| `preloadDecals(srcs)` | `Promise` | Cache decal images before first roll |
+| `setThrowSpeed(n)` | `void` | |
+| `setThrowSpin(n)` | `void` | |
+| `destroy()` | `void` | Tear down WebGL, listeners, physics |
+
+### Dice config
+
+Each entry in the `diceConfig` array passed to `roll()` / `addDice()`:
+
+```js
+{
+    dice: 'd20',                 // 'd4' | 'd6' | 'd8' | 'd10' | 'd12' | 'd20' | 'd100'
+    rolled: 18,                  // optional target value (authoritative)
+    diceColor: 0xff6b6b,         // optional numeric hex — body color
+    textColor: '#ffffff',        // optional hex string — face text color
+    backgroundColor: '#4ecdc4',  // optional hex string — face background color
+    isSecret: false,             // optional — replace numbers with '?'
+    decals: {                    // optional — see Decals section
+        '1': { src: '/sword.svg', scale: 0.7 },
+    },
+    effects: [                   // optional — roll-time effects (fire, frost, etc.)
+        effects.fire(),
+    ],
+}
+```
+
+### Result shape
+
+`onRollComplete(total, result)` and `addDice()`/`getCurrentResults()` return:
+
+```js
+{
+    total: 47,           // authoritative sum (predetermined target values)
+    variances: [         // dice whose visible face differs from authoritative
+        { type: 'd6', expected: 6, visible: 4 },
+    ],
+    results: [           // per-die details
+        { type: 'd6', value: 6, visible: 4, target: 6 },
+        ...
+    ],
+}
+```
+
+**Authoritative vs. visible**: the engine pre-simulates each roll in an isolated physics world to determine which face will land up, then paints the target value onto that face. The `total` is always the predetermined sum. If a die gets bumped (e.g. by `addDice()`) and lands on a different face, that's reported as a *variance* but the total is unchanged. This keeps results consistent across clients with different screen aspect ratios.
+
+---
+
+## 🖼️ Decals
+
+Replace number text on specific face values with SVG images.
+
+```js
+// Optional preload — eliminates "text first, decal swap" on first roll
+await diceRoller.preloadDecals([
+    '/icons/sword.svg',
+    '/icons/shield.svg',
+]);
+
+await diceRoller.roll([{
+    dice: 'd6',
+    rolled: 4,
+    decals: {
+        '1': { src: '/icons/sword.svg', scale: 0.7, offsetX: 0, offsetY: 0, rotation: 0 },
+        '2': { src: '/icons/shield.svg', scale: 0.9 },
+    },
+}]);
+```
+
+Keys are face *values* (as strings), not face indices. Decals follow the target-rolled face-swap automatically. For d4, the lookup is per-corner (a face shows three corner values); for every other die, it's per-face.
+
+---
+
+## 🔊 Sounds
+
+Pass an array of audio URLs and the engine plays a random one per dice collision, with volume scaled to impact velocity. WAV and OGG both work.
+
+```js
+new DiceRoller({
+    container,
+    sounds: ['/sfx/click.ogg', '/sfx/clack.ogg', '/sfx/clock.ogg'],
+    soundVolume: 0.6,
+});
+```
+
+Browser autoplay restrictions mean the *first* roll on page load may be silent until the user clicks once.
+
+---
+
+## 🎆 Animation Effects
+
+Two kinds of effect:
+
+1. **Roll-time effects** — attached via `dice.effects: [...]` per-die config. Run while the die is in motion (fire, frost, etc.), terminate cleanly after settle.
+2. **Settled-state effects** — declared via `effects: [...]` constructor option as a rules list. Played when a die settles, based on its result (crit-hit glow, variance amber, etc.).
+
+### Roll-time damage-type effects
+
+All ten are roll-time effects with `scope: 'die'`. Drop into any die's `effects: [...]`.
+
+```js
+import { effects } from 'open-dice-dnd';
+
+diceRoller.roll([
+    { dice: 'd20', effects: [effects.fire()] },
+    { dice: 'd6',  effects: [effects.frost(), effects.bloodSplat()] },
+    { dice: 'd8',  effects: [effects.electric()] },
+    { dice: 'd10', effects: [effects.psychic()] },
+    { dice: 'd12', effects: [effects.necrotic()] },
+]);
+```
+
+| Effect | Description |
+|---|---|
+| `fire(options)` | Flickering flame puff particles rising from die, color shifts white-hot → yellow → orange → red ember |
+| `frost(options)` | Snowflake crystals + cold mist + 3D ice shards flying outward; leaves dendrite frost patches on floor |
+| `electric(options)` | Forked lightning bolts arcing outward during roll; **post-settle, arcs between nearby settled electric dice for ~2-3 s** |
+| `acidSplat(options)` | Bright green drips → puddle decals on floor → fizzing smoke wisps |
+| `bloodSplat(options)` | Deep red drips → irregular splat decals that linger then fade |
+| `psychic(options)` | Multi-color drifting glow orbs + expanding concentric ring "thought waves" |
+| `necrotic(options)` | Sine-curving dark purple waveforms + glowing soul motes pulled INWARD into the die |
+| `radiant(options)` | Golden god-rays radiating outward + 4-point star sparkles + pulsing floor halo |
+| `thunder(options)` | Heavy concussive shockwave rings + warm dust drift |
+| `slashing(options)` | Zoro-style sword strikes — single / X / Z patterns, tapered red blade silhouettes |
+
+### Settled-state effects
+
+Use the `effects: [...]` constructor option with match-rules:
+
+```js
+import { DiceRoller, effects, presets } from 'open-dice-dnd';
+
+new DiceRoller({
+    container,
+    effects: [
+        { match: { type: 'd20', visible: 20 }, play: [
+            effects.glow({ color: 0xfacc15 }),
+            effects.haloRing(),
+            effects.confetti(),
+            effects.slowMoZoom(),
+        ]},
+        { match: { type: 'd20', visible: 1 }, play: [
+            effects.glow({ color: 0xef4444 }),
+            effects.screenShake({ intensity: 0.6 }),
+        ]},
+        { match: 'clean',    play: effects.glow({ color: 0x4ade80 }) },
+        { match: 'variance', play: effects.glow({ color: 0xfb923c }) },
+    ],
+});
+```
+
+**`match` clause** accepts:
+- `'any'` (or omitted) — always match
+- `'clean'` — visible face === authoritative value
+- `'variance'` — divergence
+- `{ type, visible, value, target }` — partial object match
+- `(perDieResult, die) => boolean` — custom predicate
+
+**Each effect spec** has `scope: 'die'` (per-die) or `scope: 'once'` (one per batch, e.g. screen-shake / slow-mo zoom).
+
+#### Settled-state primitives
+
+| Effect | Description |
+|---|---|
+| `glow({ color, duration, intensity })` | Per-face emissive pulse |
+| `scalePulse({ peak, duration })` | Mesh scale bounce |
+| `haloRing({ color, duration, startRadius, endRadius })` | Expanding torus on the floor |
+| `screenShake({ intensity, duration })` | Camera offset decay (scope: 'once') |
+| `slowMoZoom({ duration, zoomLevel })` | Camera focus + zoom hold (scope: 'once') |
+| `particleBurst({ color, count })` | Gradient-sprite spark burst |
+| `confetti({ colors, count })` | Rotating multicolor rectangles |
+
+#### Presets
+
+```js
+import { presets } from 'open-dice-dnd';
+
+new DiceRoller({ effects: presets.classicCrit });  // RPG style with crit/fail
+new DiceRoller({ effects: presets.subtle });       // gentle color confirmation only
+new DiceRoller({ effects: presets.festive });      // confetti on every clean roll
+```
+
+### Imperative effect API
+
+For ad-hoc effect triggering outside the rule system:
+
+```js
+diceRoller.glow(die, { color: 0xff0000 });
+diceRoller.scalePulse(die);
+diceRoller.haloRing(die);
+diceRoller.playEffect(effects.confetti(), die);
+```
+
+### Writing your own effect
+
+An effect is a factory that returns `{ scope, create(ctx) → { update(), cleanup() } }`:
+
+```js
+function myFlash({ color = 0xffffff } = {}) {
+    return {
+        scope: 'die',
+        create({ die, roller }) {
+            // Build whatever Three.js objects you need.
+            const startTime = performance.now();
+            return {
+                update() {
+                    if (performance.now() - startTime > 500) return true;  // done
+                    // mutate scene per frame
+                    return false;
+                },
+                cleanup() { /* called if the dice are cleared mid-effect */ },
+            };
+        }
+    };
+}
+
+// Use it in a rule or directly in a die config.
+new DiceRoller({
+    effects: [{ match: 'clean', play: myFlash({ color: 0xff00ff }) }],
+});
+```
+
+---
+
+## 🎲 Dice types
+
+| Type | Range |
+|---|---|
+| `d4` | 1–4 |
+| `d6` | 1–6 |
+| `d8` | 1–8 |
+| `d10` | 0–9 |
+| `d12` | 1–12 |
+| `d20` | 1–20 |
+| `d100` | 0–99 (two d10s) |
+
+---
+
+## 🔄 Migrating from 1.1.x to 1.2.0
+
+**No breaking changes.** Every 1.1.x call still works. The 1.2.0 upgrade is purely additive.
+
+### Existing code keeps working
+
+```js
+// 1.1.x — still works in 1.2.0
+const total = await diceRoller.roll([{ dice: 'd20' }]);
+
+// onRollComplete still receives total as the first arg
+new DiceRoller({
+    onRollComplete: (total) => { ... }
+});
+```
+
+### New things you can opt into
+
+**Richer result info** — `onRollComplete` now receives a second argument:
+```js
+new DiceRoller({
+    onRollComplete: (total, result) => {
+        console.log(result.variances);   // dice that diverged from target
+        console.log(result.results);     // per-die details
+    }
+});
+```
+
+**Add dice mid-roll** — `addDice()` returns an independent promise with full result:
+```js
+await diceRoller.roll([{ dice: 'd20', rolled: 20 }]);
+// before the d20 settles:
+const { total, variances } = await diceRoller.addDice([{ dice: 'd6', rolled: 4 }]);
+```
+
+**Sounds + effects** — new constructor options:
+```js
+import { DiceRoller, effects, presets } from 'open-dice-dnd';
+
+new DiceRoller({
+    container,
+    sounds: ['/sfx/click.ogg'],     // NEW
+    soundVolume: 0.6,                // NEW
+    effects: presets.classicCrit,    // NEW
+});
+```
+
+**Per-die effects** — slot into the dice config:
+```js
+await diceRoller.roll([
+    { dice: 'd20', rolled: 20, effects: [effects.fire()] },  // NEW
+]);
+```
+
+**Decals** — slot into the dice config:
+```js
+await diceRoller.roll([
+    { dice: 'd6', rolled: 6, decals: {                       // NEW
+        '6': { src: '/icons/skull.svg', scale: 0.75 },
+    }},
+]);
+```
+
+### Bug fixes worth knowing
+
+- **d12 face 12 reporting fix** — `getDieValue` used to return `NaN` when a d12 settled on its "12" face without a target value. Now returns `12` correctly.
+- **Defensive callback wrapping** — a buggy `onRollComplete` callback that throws no longer brings down the animate loop.
+
+### Effect API stability
+
+The effect factories and rule system are new in 1.2.0 and not finalized for stability. Future versions may iterate on options/defaults. The core `DiceRoller` class API (`roll`, `addDice`, `reset`, etc.) is stable.
+
+---
+
+## 🛠️ Development
+
+```bash
+# Run the demo
+npm run dev
+# Then open http://localhost:5173/demo/
+
+# Build the library
+npm run build:lib
+
+# Build the demo for deployment
+npm run build
+```
+
+---
+
+## 📝 Changelog
+
+### [1.2.0] - 2026
+
+#### ✨ New Features
+
+**Mid-roll dice management:**
+- `addDice(config)` — throw new dice into an active or settled scene as an independent batch with its own promise
+- `getCurrentResults()` — re-evaluate every die in the scene at any time
+- `isRolling()` — check if any batch is still unresolved
+- `onBatchSettled` constructor callback
+
+**Result reporting:**
+- `onRollComplete(total, result)` now passes the full result object as a second argument
+- `result.variances` exposes dice whose visible face diverged from the authoritative target
+- `result.results` per-die breakdown of authoritative vs. visible values
+
+**Decals:**
+- SVG face decals via `dice.decals: { '1': { src, scale, offsetX, offsetY, rotation } }`
+- `preloadDecals(srcs)` to cache images before first roll
+- All dice supported including d4 (per-corner decal placement)
+
+**Sounds:**
+- `sounds: string[]` constructor option for collision audio
+- Random pick per collision, volume scaled to impact velocity
+- Per-die throttling so settling doesn't buzz
+
+**Effects system:**
+- 10 damage-type roll-time effects: `fire`, `frost`, `electric`, `acid` + `bloodSplat` + `acidSplat`, `psychic`, `necrotic`, `radiant`, `thunder`, `slashing`
+- 7 settled-state primitives: `glow`, `scalePulse`, `haloRing`, `screenShake`, `slowMoZoom`, `particleBurst`, `confetti`
+- 3 built-in presets: `classicCrit`, `subtle`, `festive`
+- Declarative rule system: `effects: [{ match, play }]`
+- Imperative API: `diceRoller.glow(die, opts)`, `diceRoller.playEffect(spec, die)`
+- Extensible: write your own effect by exporting a factory with `scope` + `create()`
+
+**Highlights of individual effects:**
+- `electric` arcs jagged forked bolts during roll; **post-settle, settled electric dice within 6 units arc to each other for ~2.5 s**
+- `frost` emits real 3D tapered octahedron ice shards alongside snowflake sprites
+- `necrotic` pulls sine-curving dark waveforms INWARD into the die (inverse of every other effect)
+- `slashing` draws Zoro-style single / X / Z patterns with custom-tapered tube geometry (blade silhouettes)
+- `radiant` orients god-rays correctly under the top-down ortho camera
+
+#### 🐛 Bug Fixes
+
+- **d12 face 12 reporting** — `getDieValue` returned `NaN` when a d12 settled on its "12" face without a target. Now correctly returns `12`. Pre-existing bug since v1.0.0.
+- **onRollComplete crashes** — a throwing callback no longer kills the animate loop.
+
+#### 🔧 Internal Architecture
+
+- Pre-simulation moved from the live physics world to an isolated `CANNON.World` per roll — `addDice()` mid-flight doesn't perturb the in-progress simulation
+- Single-phase animation loop with per-batch settlement tracking
+- Per-die `collide` listener for impact-scaled audio
+- Effects subsystem with cleanup hooks for scene-attached helpers (geometry/material disposal)
+- Module-level settled-electric registry powers cross-die arcing without engine coupling
+
+### [1.1.2] - 2025-10-25
+
+- Fix: Add `isSecret` parameter support to DiceRoller API
+
+### [1.1.1] - 2025-10-23
+
+- Bump version
+
+### [1.1.0] - 2025-10-19
+
+- 🌈 Custom dice colors (`diceColor`, `textColor`, `backgroundColor`)
+- 🔒 Secret roll mode (`isSecret`)
+
+### [1.0.0] - 2025-10-03
+
+- 🎉 Initial release
+- Physics-based d4/d6/d8/d10/d12/d20/d100
+- Promise-based `roll()` API
+- Three.js + Cannon.js / Cannon-es
+
+---
+
+## 📄 License
+
+MIT. See [LICENSE](./LICENSE).
+
+## 🙏 Credits
+
+- [Three.js](https://threejs.org/) — 3D rendering
+- [Cannon-es](https://pmndrs.github.io/cannon-es/) — physics
+- [Vite](https://vitejs.dev/) — build tool
+
+---
+
+Made with ❤️ for tabletop gaming.

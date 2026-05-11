@@ -25,7 +25,8 @@
         <div class="control-group">
             <label for="json-input">Custom Dice JSON</label><br>
             <textarea id="json-input" rows="6" cols="40">
-[{ "dice": "d10", "rolled": 6 },
+[{ "dice": "d4", "rolled": 3 },
+{ "dice": "d10", "rolled": 6 },
 { "dice": "d100", "rolled": 96 },
 { "dice": "d6", "rolled": 6 },
 { "dice": "d8", "rolled": 9 },
@@ -34,7 +35,48 @@
             </textarea>
         </div>
 
+        <div class="control-group">
+            <label for="add-json-input">Add Dice JSON (mid-roll)</label><br>
+            <textarea id="add-json-input" rows="3" cols="40">
+[{ "dice": "d6", "rolled": 4 }]
+            </textarea>
+        </div>
+
+        <div class="control-group">
+            <strong>Roll-time effects</strong>
+            <label><input type="checkbox" id="fire-d20-toggle" /> 🔥 Fire on d20</label>
+            <label><input type="checkbox" id="trail-d6-toggle" /> ✨ Comet trail on d6</label>
+            <label><input type="checkbox" id="blood-toggle" /> 🩸 Blood splats (all dice)</label>
+            <label><input type="checkbox" id="acid-toggle" /> ☣️ Acid splats (all dice)</label>
+            <label><input type="checkbox" id="frost-toggle" /> ❄️ Frost (all dice)</label>
+            <label><input type="checkbox" id="electric-toggle" /> ⚡ Electric (all dice)</label>
+            <label><input type="checkbox" id="psychic-toggle" /> 🔮 Psychic (all dice)</label>
+            <label><input type="checkbox" id="necrotic-toggle" /> 💀 Necrotic (all dice)</label>
+            <label><input type="checkbox" id="radiant-toggle" /> ☀️ Radiant (all dice)</label>
+            <label><input type="checkbox" id="thunder-toggle" /> 🌩️ Thunder (all dice)</label>
+            <label><input type="checkbox" id="slashing-toggle" /> ⚔️ Slashing (all dice)</label>
+        </div>
+
+        <div class="control-group effects-builder">
+            <label for="effects-json"><strong>Settled-effect rules</strong></label>
+            <div class="preset-row">
+                <button class="preset-btn" data-preset="classicCrit">Classic crit</button>
+                <button class="preset-btn" data-preset="subtle">Subtle</button>
+                <button class="preset-btn" data-preset="festive">Festive</button>
+                <button class="preset-btn" data-preset="none">None</button>
+            </div>
+            <textarea id="effects-json" rows="14" spellcheck="false"></textarea>
+            <div class="effects-help">
+                Effects: <code>glow</code>, <code>scalePulse</code>, <code>haloRing</code>,
+                <code>screenShake</code>, <code>slowMoZoom</code>, <code>particleBurst</code>,
+                <code>confetti</code>. Match: <code>"clean"</code>, <code>"variance"</code>,
+                <code>"any"</code>, or <code>{ "type": "d20", "visible": 20 }</code>.
+            </div>
+            <button id="apply-effects">Apply effect rules</button>
+        </div>
+
         <button id="roll-button">Roll Dice</button>
+        <button id="add-button">Add Dice</button>
         <button id="reset-button">Reset</button>
     </div>
     <div id="results-container"></div>

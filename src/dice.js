@@ -21,14 +21,7 @@ function isValidNumericColor(color) {
     return typeof color === 'number' && color >= 0 && color <= 0xffffff;
 }
 
-export function createDie(type, visible = true, isFirst = true, targetNumber, foundClosestIndex, customMaterial = null, customScene = null, customWorld = null, diceColor = null, textColor = null, backgroundColor = null, isSecret = false) {
-    console.log('🎨 createDie called with colors:');
-    console.log('  type:', type);
-    console.log('  diceColor:', diceColor);
-    console.log('  textColor:', textColor);
-    console.log('  backgroundColor:', backgroundColor);
-    console.log('  isSecret:', isSecret);
-    
+export function createDie(type, visible = true, isFirst = true, targetNumber, foundClosestIndex, customMaterial = null, customScene = null, customWorld = null, diceColor = null, textColor = null, backgroundColor = null, isSecret = false, decals = null, decalRegistry = null) {
     // Use custom material/scene/world if provided
     const material = customMaterial || new CANNON.Material('dice');
     const targetScene = customScene;
@@ -50,45 +43,40 @@ export function createDie(type, visible = true, isFirst = true, targetNumber, fo
     const finalDiceColor = (diceColor !== null && isValidNumericColor(diceColor)) ? diceColor : colors.diceColor;
     const finalTextColor = (textColor !== null && isValidHexColor(textColor)) ? textColor : colors.textColor;
     const finalBackgroundColor = (backgroundColor !== null && isValidHexColor(backgroundColor)) ? backgroundColor : colors.backgroundColor;
-    
-    console.log('🎨 Final colors being used:');
-    console.log('  finalDiceColor:', finalDiceColor);
-    console.log('  finalTextColor:', finalTextColor);
-    console.log('  finalBackgroundColor:', finalBackgroundColor);
-    
+
     let mesh, body;
     const size = 1;
     switch (type) {
         case 'd4':
-            mesh = createD4Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret);
+            mesh = createD4Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
             body = createD4Body(size, material);
             break;
         case 'd6':
-            mesh = createD6Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret);
+            mesh = createD6Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
             body = new CANNON.Body({ mass: 1, shape: new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2)), material: material });
             break;
         case 'd8':
-            mesh = createD8Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret);
+            mesh = createD8Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
             body = createD8Body(size, material);
             break;
         case 'd10':
-            mesh = createD10Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret);
+            mesh = createD10Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
             body = createD10Body(size, material);
             break;
         case 'd12':
-            mesh = createD12Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret);
+            mesh = createD12Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
             body = createD12Body(size, material);
             break;
         case 'd20':
-            mesh = createD20Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret);
+            mesh = createD20Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
             body = createD20Body(size, material);
             break;
         case 'd100':
-            mesh = createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret);
+            mesh = createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
             body = createD100Body(size, material);
             break;
         default:
-            mesh = createD6Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret);
+            mesh = createD6Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
             body = new CANNON.Body({ mass: 1, shape: new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2)), material: material });
             break;
     }
@@ -218,7 +206,10 @@ export function getDieValue(die, up, targetNumber, foundClosestIndex) {
         return [parseInt(faceValues[closestIndex]), closestIndex] || [1, 1];
     } else if (die.type === 'd12') {
         const geometry = die.mesh.geometry;
-        const faceValues = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        // Leading '' aligns with materialIndex-1 (geometry emits materialIndex 2..13 for
+        // d12 faces, so closestIndex spans 1..12). Without the empty slot at index 0, the
+        // "12" face lands on an out-of-bounds lookup and returns NaN.
+        const faceValues = ['', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
         if (targetNumber != null && foundClosestIndex != null) {
           if (foundClosestIndex >= 0 && foundClosestIndex < faceValues.length) {

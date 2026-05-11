@@ -1,35 +1,9 @@
-
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { D4_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
+import { createD4FaceTexture } from '../face-texture.js';
 
-function createD4TextTexture(text, color, backColor) {
-    let canvas = document.createElement("canvas");
-    let context = canvas.getContext("2d");
-    let ts = calculateTextureSize(50 / 2 + 50 * 2) * 2;
-    canvas.width = canvas.height = ts;
-    context.font = ts / 5 + "pt Arial";
-    context.fillStyle = backColor;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillStyle = color;
-    for (let i in text) {
-        context.fillText(text[i], canvas.width / 2, canvas.height / 2 - ts * 0.3);
-        context.translate(canvas.width / 2, canvas.height / 2);
-        context.rotate(Math.PI * 2 / 3); // Rotate for each number
-        context.translate(-canvas.width / 2, -canvas.height / 2);
-    }
-    let texture = new THREE.Texture(canvas);
-    texture.needsUpdate = true;
-    return texture;
-}
-
-function calculateTextureSize(approx) {
-    return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
-}
-
-export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#9b59b6', isSecret = false) {
+export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#9b59b6', isSecret = false, decals = null, decalRegistry = null) {
     const radius = size * 1.2;
     const tab = -0.1;
     const af = Math.PI * 7 / 6;
@@ -48,7 +22,6 @@ export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 
 
     const faceTexts = d4FaceTexts[0].map(subArray =>
       subArray.map(n => {
-        // Use "?" if secret mode is enabled
         if (isSecret && n !== 0) return '?';
         if (n === foundClosestIndex) return targetNumber;
         if (n === targetNumber) return foundClosestIndex;
@@ -56,9 +29,16 @@ export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 
       })
     );
 
-
     for (let i = 0; i < faceTexts.length; ++i) {
-        let texture = createD4TextTexture(faceTexts[i], textColor, backgroundColor);
+        const texture = createD4FaceTexture({
+            values: faceTexts[i],
+            textColor,
+            backgroundColor,
+            // In secret mode the corners were rewritten to '?' above, so decal keys won't
+            // match — the value stays hidden naturally without leaking via an icon.
+            decals,
+            decalRegistry,
+        });
         materials.push(new THREE.MeshPhongMaterial({
             specular: 0x172022,
             color: diceColor,
