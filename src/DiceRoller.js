@@ -342,28 +342,50 @@ export class DiceRoller {
     }
 
     /**
-     * Add dice to an ongoing or completed roll without disturbing previously-resolved results.
-     * Pre-simulates the new dice in isolation (so their authoritative values are determined
-     * by a clean physics run), then throws them into the live scene. Existing dice in-flight
-     * may be visually bumped but their authoritative results are unchanged.
+     * Add dice to a scene that may already contain previously-rolled dice.
+     *
+     * Waits for any unresolved batches to settle first, then runs the new
+     * batch's prediction in the live world with the existing settled dice
+     * present (their state is snapshotted and restored around the
+     * prediction so they aren't permanently disturbed). Same world + same
+     * seeds + same integrator as the visible spawn that follows = same
+     * trajectory, so `variances` is empty by construction — equivalent
+     * guarantee to roll() but without wiping the scene.
      *
      * @param {Array<Object>} diceConfig - Array of dice configurations
      * @returns {Promise<{total: number, variances: Array, results: Array}>}
-     *   - total: authoritative sum for the added dice
-     *   - variances: per-die mismatches between authoritative and visible face (caused by
-     *     collisions with other live dice); empty array means clean roll
-     *   - results: per-die {type, value, visible, target}
      */
-    addDice(diceConfig) {
+    async addDice(diceConfig) {
+        // Wait for any unresolved batches to finish settling so the
+        // snapshot we're about to take is of dice at rest. This serializes
+        // rapid-fire addDice calls behind their predecessors — desirable
+        // for spectator-side replay, where rolls arrive over the wire and
+        // should stack visually rather than crash through each other.
+        await this._waitForAllBatchesResolved();
+
+        const { closestIndexes, seeds } = this._preSimulateInLiveWorld(diceConfig);
+
         return new Promise((resolve) => {
-            // addDice can't predict in this.world because it would collide
-            // with in-flight live dice. Falls back to the isolated temp
-            // world — which produces correct authoritative values but can
-            // diverge from the live re-simulation, hence the documented
-            // `variances` array.
-            const { closestIndexes, seeds } = this._preSimulateInTempWorld(diceConfig);
             this._spawnBatch(diceConfig, 'added', closestIndexes, seeds, resolve);
             this._ensureAnimating();
+        });
+    }
+
+    /**
+     * Resolves once every batch currently tracked in `this.diceBatches` is
+     * marked resolved (i.e. its dice have all settled and its callback has
+     * fired). No-op when the scene is idle. Polls at 50ms — cheap, and the
+     * typical wait is ~1-2s while live dice come to rest.
+     * @private
+     */
+    _waitForAllBatchesResolved() {
+        if (!this.diceBatches.some(b => !b.resolved)) return Promise.resolve();
+        return new Promise((resolve) => {
+            const check = () => {
+                if (!this.diceBatches.some(b => !b.resolved)) resolve();
+                else setTimeout(check, 50);
+            };
+            check();
         });
     }
 
@@ -428,15 +450,31 @@ export class DiceRoller {
     }
 
     /**
-     * Pre-simulate in the LIVE world (this.world). Used by roll(), which
-     * has just cleared the scene so the live world is empty and we're free
-     * to use it as the prediction substrate. Same world + same seeds + same
-     * integrator as the visible spawn that follows = same trajectory, so
-     * the predicted face is guaranteed to be the face that lands up.
-     * Invisible bodies are removed from the world before returning.
+     * Pre-simulate in the LIVE world (this.world). Used by both roll() and
+     * addDice(): the visible spawn that follows reuses the same world, the
+     * same RNG seeds, and the same integrator, so the predicted face is the
+     * face that lands up. Variances are zero by construction.
+     *
+     * Any dice already in this.dice (e.g. from a prior addDice batch) are
+     * snapshotted before the prediction and restored after, so the
+     * prediction can collide with them realistically without permanently
+     * disturbing their state.
      * @private
      */
     _preSimulateInLiveWorld(diceConfig) {
+        // Snapshot existing dice so the prediction's collisions don't
+        // permanently move them. Resolved + settled dice will be at rest
+        // (addDice waits on _waitForAllBatchesResolved before calling
+        // this), so the snapshot captures their final orientation/position
+        // and the restore brings them back to it exactly.
+        const snapshots = this.dice.map(d => ({
+            die: d,
+            position: d.body.position.clone(),
+            quaternion: d.body.quaternion.clone(),
+            velocity: d.body.velocity.clone(),
+            angularVelocity: d.body.angularVelocity.clone(),
+        }));
+
         const dice = [];
         const seeds = [];
         diceConfig.forEach((diceRoll) => {
@@ -485,117 +523,20 @@ export class DiceRoller {
             if (d && d.body) this.world.removeBody(d.body);
         }
 
-        return { closestIndexes, seeds };
-    }
-
-    /**
-     * Pre-simulate dice in an isolated temp world. Used by addDice(), which
-     * adds new dice to an already-running scene where this.world is busy
-     * with in-flight dice we mustn't disturb. The trade-off is that the
-     * temp world's fixed-step integration diverges from the live world's
-     * variable-dt integration, which can produce `variances` — documented
-     * behavior for mid-roll additions.
-     * @private
-     */
-    _preSimulateInTempWorld(diceConfig) {
-        const { world: tempWorld, diceMaterial: tempDiceMaterial } = this._createTempWorld();
-
-        const dice = [];
-        const seeds = [];
-        diceConfig.forEach((diceRoll) => {
-            const repeatCount = diceRoll.dice === 'd100' ? 2 : 1;
-            for (let i = 0; i < repeatCount; i++) {
-                const die = createDie(
-                    diceRoll.dice, false, i === 0,
-                    diceRoll.rolled, null,
-                    tempDiceMaterial, null, tempWorld,
-                    diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
-                    diceRoll.isSecret
-                );
-                const seed = this._generateRandomSeed();
-                seeds.push(seed);
-                if (!die) {
-                    dice.push(null);
-                    continue;
-                }
-                die.isFirst = !(i > 0 && diceRoll.dice === 'd100');
-                this._applyDiePhysics(die, seed);
-                dice.push(die);
-            }
-        });
-
-        const maxSteps = 5000;
-        const minSteps = 60;
-        for (let step = 0; step < maxSteps; step++) {
-            tempWorld.step(1 / 60);
-            if (step < minSteps) continue;
-            const allSettled = dice.every(d => !d || this._isBodySettled(d.body));
-            if (allSettled) break;
+        // Restore existing dice to their pre-prediction state. They'll
+        // experience the same collisions again when the visible new dice
+        // are spawned with the same seeds, so they end up in the same
+        // final state — preserving determinism for both batches.
+        for (const snap of snapshots) {
+            snap.die.body.position.copy(snap.position);
+            snap.die.body.quaternion.copy(snap.quaternion);
+            snap.die.body.velocity.copy(snap.velocity);
+            snap.die.body.angularVelocity.copy(snap.angularVelocity);
+            snap.die.body.force.setZero();
+            snap.die.body.torque.setZero();
         }
 
-        const closestIndexes = dice.map(d => {
-            if (!d) return null;
-            d.mesh.quaternion.copy(d.body.quaternion);
-            return getDieValue(d, this.up)[1];
-        });
-
         return { closestIndexes, seeds };
-    }
-
-    /**
-     * Build an isolated physics world matching the live world's geometry. Used for pre-sim
-     * so the determination of each die's settled face is not perturbed by other live dice.
-     * @private
-     */
-    _createTempWorld() {
-        const w = new CANNON.World({ gravity: new CANNON.Vec3(0, -50, 0) });
-        w.broadphase = new CANNON.NaiveBroadphase();
-        w.solver.iterations = 30;
-
-        const diceMat = new CANNON.Material('dice');
-        const floorMat = new CANNON.Material('floor');
-        const wallMat = new CANNON.Material('wall');
-
-        w.addContactMaterial(new CANNON.ContactMaterial(diceMat, floorMat,
-            { friction: 0.2, restitution: 0.4 }));
-        w.addContactMaterial(new CANNON.ContactMaterial(diceMat, diceMat,
-            { friction: 0.1, restitution: 0.5 }));
-        w.addContactMaterial(new CANNON.ContactMaterial(diceMat, wallMat,
-            { friction: 0.1, restitution: 0.8 }));
-
-        const floorBody = new CANNON.Body({
-            mass: 0, material: floorMat, shape: new CANNON.Plane()
-        });
-        floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-        w.addBody(floorBody);
-
-        const frustumSize = 18;
-        const aspect = this.width / this.height;
-        const topBound = frustumSize / 2;
-        const bottomBound = -frustumSize / 2;
-        const leftBound = -frustumSize * aspect / 2;
-        const rightBound = frustumSize * aspect / 2;
-        const wallThickness = 2;
-        const wallHeight = 20;
-
-        const addWall = (pos, halfExt) => {
-            const body = new CANNON.Body({
-                mass: 0, material: wallMat,
-                shape: new CANNON.Box(new CANNON.Vec3(halfExt[0], halfExt[1], halfExt[2]))
-            });
-            body.position.set(pos[0], pos[1], pos[2]);
-            w.addBody(body);
-        };
-        addWall([leftBound - wallThickness / 2, wallHeight / 2, 0],
-            [wallThickness / 2, wallHeight / 2, frustumSize / 2]);
-        addWall([rightBound + wallThickness / 2, wallHeight / 2, 0],
-            [wallThickness / 2, wallHeight / 2, frustumSize / 2]);
-        addWall([0, wallHeight / 2, topBound + wallThickness / 2],
-            [frustumSize * aspect / 2, wallHeight / 2, wallThickness / 2]);
-        addWall([0, wallHeight / 2, bottomBound - wallThickness / 2],
-            [frustumSize * aspect / 2, wallHeight / 2, wallThickness / 2]);
-
-        return { world: w, diceMaterial: diceMat };
     }
 
     /**
