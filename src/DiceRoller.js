@@ -689,6 +689,69 @@ export class DiceRoller {
     }
 
     /**
+     * Rotate `die` so its painted (predetermined) face points up — or down,
+     * for d4, which is read from its bottom face. Called once per die at
+     * batch-settle time for roll() batches, to guarantee zero variance even
+     * when fp drift between the pre-sim and live worlds lands the die on a
+     * different face than the pre-sim chose.
+     *
+     * The body's velocity and angular velocity are zeroed so it stays
+     * settled. A tiny vertical offset is applied to avoid floor
+     * interpenetration after the re-orientation.
+     * @private
+     */
+    _snapPaintedFaceUp(die) {
+        if (die.closestIndex == null) return;
+        const targetDir = die.type === 'd4'
+            ? this.up.clone().negate()
+            : this.up.clone();
+
+        const localNormal = this._faceLocalNormal(die, die.closestIndex);
+        if (!localNormal) return;
+
+        const currentQuat = die.mesh.quaternion.clone();
+        const currentWorldNormal = localNormal.clone().applyQuaternion(currentQuat);
+        // Already aligned — physics matched the pre-sim, no snap needed.
+        if (currentWorldNormal.dot(targetDir) > 0.9999) return;
+
+        const align = new THREE.Quaternion().setFromUnitVectors(currentWorldNormal, targetDir);
+        const newQuat = new THREE.Quaternion().multiplyQuaternions(align, currentQuat);
+
+        die.mesh.quaternion.copy(newQuat);
+        die.body.quaternion.set(newQuat.x, newQuat.y, newQuat.z, newQuat.w);
+        die.body.velocity.set(0, 0, 0);
+        die.body.angularVelocity.set(0, 0, 0);
+        // Lift slightly so the re-oriented die doesn't intersect the floor
+        // and trigger a bounce on the next physics step.
+        die.body.position.y += 0.05;
+        die.mesh.position.copy(die.body.position);
+    }
+
+    /**
+     * Local-space normal of the geometry group whose materialIndex maps to
+     * `closestIndex + 1`. Mirrors the face-iteration in `getDieValue` but
+     * returns the normal directly instead of choosing the most-aligned face.
+     * @private
+     */
+    _faceLocalNormal(die, closestIndex) {
+        const geometry = die.mesh.geometry;
+        const position = geometry.attributes.position;
+        for (let i = 0; i < geometry.groups.length; i++) {
+            const group = geometry.groups[i];
+            if (group.materialIndex === 0) continue; // chamfer
+            if (group.materialIndex - 1 !== closestIndex) continue;
+            const v0 = new THREE.Vector3().fromBufferAttribute(position, group.start);
+            const v1 = new THREE.Vector3().fromBufferAttribute(position, group.start + 1);
+            const v2 = new THREE.Vector3().fromBufferAttribute(position, group.start + 2);
+            return new THREE.Vector3()
+                .subVectors(v1, v0)
+                .cross(new THREE.Vector3().subVectors(v2, v0))
+                .normalize();
+        }
+        return null;
+    }
+
+    /**
      * Value the die would report if its predetermined face were up — i.e. the
      * server-authoritative result regardless of how the live animation settled.
      * @private
@@ -742,6 +805,21 @@ export class DiceRoller {
             const allSettled = batch.dice.every(d => this._isBodySettled(d.body));
             if (allSettled) {
                 batch.resolved = true;
+                // For roll() batches we honor the v1.1 no-variance contract by
+                // snapping each die's orientation so its painted face is up
+                // (or down, for d4) before reading the visible value. Without
+                // this, fp drift between the pre-sim (fixed 1/60 step) and
+                // the live world (variable dt step) can land a die on a
+                // different face than the pre-sim chose, producing a spurious
+                // variance in what should be a deterministic roll().
+                //
+                // addDice() batches keep their physics-resolved orientation
+                // because variances are the documented behavior of mid-roll
+                // additions (collisions with live dice can rotate them off
+                // their painted face).
+                if (batch.type === 'main') {
+                    for (const d of batch.dice) this._snapPaintedFaceUp(d);
+                }
                 const result = this._computeBatchResults(batch.dice);
                 // Fire effects FIRST (rules + imperative hook) so they're queued before
                 // the promise resolves — otherwise user code that fires its own effects
