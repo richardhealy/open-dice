@@ -248,9 +248,17 @@ export class DiceRoller {
      * @param {Array<Object>} diceConfig - Array of dice configurations
      * @param {string} diceConfig[].dice - Type of die (d4, d6, d8, d10, d12, d20, d100)
      * @param {number} [diceConfig[].rolled] - Optional target number for the roll
+     * @param {Object} [options]
+     * @param {boolean} [options.pinToTarget=false] - When true, the visible face of
+     *   each die is forcibly snapped to its predetermined target at settle time —
+     *   any fp drift between the pre-simulation and the live physics is corrected
+     *   so the displayed faces always match the authoritative values. Off by default
+     *   so callers who want to *see* the natural physics outcome (and any
+     *   adjustments it produces) get the original v1.2.1 behavior. Spectators
+     *   replaying a broadcast roll typically want this set to true.
      * @returns {Promise<number>} Resolves with the total of this batch (backward compatible)
      */
-    roll(diceConfig) {
+    roll(diceConfig, options = {}) {
         this._clearDice();
         if (this.floor) this.floor.material.opacity = 0.5;
         this.lastTime = undefined;
@@ -266,6 +274,7 @@ export class DiceRoller {
                 }
                 resolve(result.total);
             });
+            batch.pinToTarget = !!options.pinToTarget;
             this._ensureAnimating();
             return batch;
         });
@@ -689,66 +698,75 @@ export class DiceRoller {
     }
 
     /**
-     * Rotate `die` so its painted (predetermined) face points up — or down,
-     * for d4, which is read from its bottom face. Called once per die at
-     * batch-settle time for roll() batches, to guarantee zero variance even
-     * when fp drift between the pre-sim and live worlds lands the die on a
-     * different face than the pre-sim chose.
+     * If the die settled on a face other than the one the pre-sim chose,
+     * swap mesh materials so the texture painted for the target value moves
+     * onto whichever face actually landed up. `die.closestIndex` is updated
+     * to the new face index so subsequent `getDieValue` calls — which
+     * substitute `targetNumber` at `foundClosestIndex` — report the target
+     * value.
      *
-     * The body's velocity and angular velocity are zeroed so it stays
-     * settled. A tiny vertical offset is applied to avoid floor
-     * interpenetration after the re-orientation.
+     * No-op when the physics-settled face already matches the pre-sim
+     * choice (the common case — only triggers on the fp-drift cases the
+     * v1.1 author's note acknowledges as "harder" to fix without
+     * library help). The die never physically rotates.
      * @private
      */
-    _snapPaintedFaceUp(die) {
+    _swapTargetToVisibleFace(die) {
         if (die.closestIndex == null) return;
-        const targetDir = die.type === 'd4'
-            ? this.up.clone().negate()
-            : this.up.clone();
+        if (!Array.isArray(die.mesh.material)) return;
 
-        const localNormal = this._faceLocalNormal(die, die.closestIndex);
-        if (!localNormal) return;
+        const actualIndex = this._findReadFaceIndex(die);
+        if (actualIndex == null) return;
+        // Deviation check — physics matched the pre-sim, leave the die alone.
+        if (actualIndex === die.closestIndex) return;
 
-        const currentQuat = die.mesh.quaternion.clone();
-        const currentWorldNormal = localNormal.clone().applyQuaternion(currentQuat);
-        // Already aligned — physics matched the pre-sim, no snap needed.
-        if (currentWorldNormal.dot(targetDir) > 0.9999) return;
+        // Geometry groups skip materialIndex 0 (chamfer); face material
+        // indexes are therefore `faceIndex + 1`.
+        const a = actualIndex + 1;
+        const b = die.closestIndex + 1;
+        const materials = die.mesh.material;
+        if (a >= materials.length || b >= materials.length) return;
 
-        const align = new THREE.Quaternion().setFromUnitVectors(currentWorldNormal, targetDir);
-        const newQuat = new THREE.Quaternion().multiplyQuaternions(align, currentQuat);
+        const tmp = materials[a];
+        materials[a] = materials[b];
+        materials[b] = tmp;
 
-        die.mesh.quaternion.copy(newQuat);
-        die.body.quaternion.set(newQuat.x, newQuat.y, newQuat.z, newQuat.w);
-        die.body.velocity.set(0, 0, 0);
-        die.body.angularVelocity.set(0, 0, 0);
-        // Lift slightly so the re-oriented die doesn't intersect the floor
-        // and trigger a bounce on the next physics step.
-        die.body.position.y += 0.05;
-        die.mesh.position.copy(die.body.position);
+        // Re-anchor closestIndex onto the face that's actually up, so
+        // getDieValue's substitution slot lines up with the visible face.
+        die.closestIndex = actualIndex;
     }
 
     /**
-     * Local-space normal of the geometry group whose materialIndex maps to
-     * `closestIndex + 1`. Mirrors the face-iteration in `getDieValue` but
-     * returns the normal directly instead of choosing the most-aligned face.
+     * Index of the face whose normal most agrees with the read direction
+     * (this.up for most dice; -this.up for d4, which is read off its
+     * bottom face). Mirrors the iteration in `getDieValue` but returns the
+     * raw physics-settled index without any target substitution.
      * @private
      */
-    _faceLocalNormal(die, closestIndex) {
+    _findReadFaceIndex(die) {
         const geometry = die.mesh.geometry;
         const position = geometry.attributes.position;
+        const wantMax = die.type !== 'd4';
+        let extreme = wantMax ? -Infinity : Infinity;
+        let bestIdx = null;
         for (let i = 0; i < geometry.groups.length; i++) {
             const group = geometry.groups[i];
-            if (group.materialIndex === 0) continue; // chamfer
-            if (group.materialIndex - 1 !== closestIndex) continue;
+            if (group.materialIndex === 0) continue;
             const v0 = new THREE.Vector3().fromBufferAttribute(position, group.start);
             const v1 = new THREE.Vector3().fromBufferAttribute(position, group.start + 1);
             const v2 = new THREE.Vector3().fromBufferAttribute(position, group.start + 2);
-            return new THREE.Vector3()
+            const normal = new THREE.Vector3()
                 .subVectors(v1, v0)
                 .cross(new THREE.Vector3().subVectors(v2, v0))
                 .normalize();
+            const worldNormal = normal.clone().applyQuaternion(die.mesh.quaternion);
+            const dot = worldNormal.dot(this.up);
+            if (wantMax ? dot > extreme : dot < extreme) {
+                extreme = dot;
+                bestIdx = group.materialIndex - 1;
+            }
         }
-        return null;
+        return bestIdx;
     }
 
     /**
@@ -805,20 +823,26 @@ export class DiceRoller {
             const allSettled = batch.dice.every(d => this._isBodySettled(d.body));
             if (allSettled) {
                 batch.resolved = true;
-                // For roll() batches we honor the v1.1 no-variance contract by
-                // snapping each die's orientation so its painted face is up
-                // (or down, for d4) before reading the visible value. Without
-                // this, fp drift between the pre-sim (fixed 1/60 step) and
-                // the live world (variable dt step) can land a die on a
-                // different face than the pre-sim chose, producing a spurious
-                // variance in what should be a deterministic roll().
+                // Optional face-swap: when the caller passed `pinToTarget: true`
+                // to roll(), each die's materials are swapped so the texture
+                // painted for the target value moves to whichever face
+                // actually landed up. The die does NOT physically rotate —
+                // its physics-settled orientation is preserved, only the
+                // visible texture is reassigned. This matches the v1.1
+                // contract (visible value === authoritative target) without
+                // the visual jerk a rotation snap would cause.
                 //
-                // addDice() batches keep their physics-resolved orientation
-                // because variances are the documented behavior of mid-roll
-                // additions (collisions with live dice can rotate them off
-                // their painted face).
-                if (batch.type === 'main') {
-                    for (const d of batch.dice) this._snapPaintedFaceUp(d);
+                // Off by default: the natural physics outcome is preserved
+                // for callers that *want* to see adjustments — e.g. the
+                // originator of a roll. Spectators replaying a broadcast
+                // roll typically want it on so fp drift between their pre-sim
+                // and live world can't make their faces disagree with the
+                // values the originator broadcast.
+                //
+                // addDice() batches never face-swap — variance is documented
+                // behavior for mid-roll additions (collisions with live dice).
+                if (batch.pinToTarget) {
+                    for (const d of batch.dice) this._swapTargetToVisibleFace(d);
                 }
                 const result = this._computeBatchResults(batch.dice);
                 // Fire effects FIRST (rules + imperative hook) so they're queued before
