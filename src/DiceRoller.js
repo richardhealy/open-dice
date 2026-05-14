@@ -245,26 +245,34 @@ export class DiceRoller {
 
     /**
      * Roll dice — clears any existing dice and starts a new roll.
+     *
+     * The roll() prediction runs in this.world (the live physics world)
+     * rather than an isolated temp world: a clone of the dice config is
+     * stepped to rest in the live world with the same RNG seeds the
+     * visible spawn will use, the resting face is captured, the invisible
+     * bodies are removed, and the visible dice are then spawned with the
+     * same seeds. Same world + same seeds + same integrator = same
+     * trajectory, so the predicted face is the face that lands up.
+     * Variances are zero by construction on a plain roll() — this is the
+     * v1.1 contract restored.
+     *
+     * addDice() keeps its temp-world prediction because the live world is
+     * occupied by in-flight dice we can't disturb.
+     *
      * @param {Array<Object>} diceConfig - Array of dice configurations
      * @param {string} diceConfig[].dice - Type of die (d4, d6, d8, d10, d12, d20, d100)
      * @param {number} [diceConfig[].rolled] - Optional target number for the roll
-     * @param {Object} [options]
-     * @param {boolean} [options.pinToTarget=false] - When true, the visible face of
-     *   each die is forcibly snapped to its predetermined target at settle time —
-     *   any fp drift between the pre-simulation and the live physics is corrected
-     *   so the displayed faces always match the authoritative values. Off by default
-     *   so callers who want to *see* the natural physics outcome (and any
-     *   adjustments it produces) get the original v1.2.1 behavior. Spectators
-     *   replaying a broadcast roll typically want this set to true.
      * @returns {Promise<number>} Resolves with the total of this batch (backward compatible)
      */
-    roll(diceConfig, options = {}) {
+    roll(diceConfig) {
         this._clearDice();
         if (this.floor) this.floor.material.opacity = 0.5;
         this.lastTime = undefined;
 
+        const { closestIndexes, seeds } = this._preSimulateInLiveWorld(diceConfig);
+
         return new Promise((resolve) => {
-            const batch = this._spawnBatch(diceConfig, 'main', (result) => {
+            this._spawnBatch(diceConfig, 'main', closestIndexes, seeds, (result) => {
                 // Pass the full result as a second arg so callers can read variances/results
                 // without breaking the original `total`-only callback signature. Wrapped
                 // in try/catch so a buggy callback can't take down the animate loop.
@@ -274,9 +282,7 @@ export class DiceRoller {
                 }
                 resolve(result.total);
             });
-            batch.pinToTarget = !!options.pinToTarget;
             this._ensureAnimating();
-            return batch;
         });
     }
 
@@ -350,7 +356,13 @@ export class DiceRoller {
      */
     addDice(diceConfig) {
         return new Promise((resolve) => {
-            this._spawnBatch(diceConfig, 'added', resolve);
+            // addDice can't predict in this.world because it would collide
+            // with in-flight live dice. Falls back to the isolated temp
+            // world — which produces correct authoritative values but can
+            // diverge from the live re-simulation, hence the documented
+            // `variances` array.
+            const { closestIndexes, seeds } = this._preSimulateInTempWorld(diceConfig);
+            this._spawnBatch(diceConfig, 'added', closestIndexes, seeds, resolve);
             this._ensureAnimating();
         });
     }
@@ -367,12 +379,13 @@ export class DiceRoller {
     }
 
     /**
-     * Pre-simulate in isolation, spawn visible dice into the live world, track as a batch.
+     * Spawn visible dice into the live world, track as a batch. The caller
+     * supplies pre-computed `closestIndexes` (face index each die will land
+     * on) and `seeds` (RNG seeds used by `_applyDiePhysics` to reproduce
+     * the predicted trajectory).
      * @private
      */
-    _spawnBatch(diceConfig, type, onResolve) {
-        const { closestIndexes, seeds } = this._preSimulate(diceConfig);
-
+    _spawnBatch(diceConfig, type, closestIndexes, seeds, onResolve) {
         const batchDice = [];
         let cidx = 0;
         diceConfig.forEach((diceRoll) => {
@@ -415,12 +428,76 @@ export class DiceRoller {
     }
 
     /**
-     * Pre-simulate dice in an isolated physics world to determine the face that lands up
-     * for each. Returns the per-die closest face index and the RNG seeds used so the live
-     * spawn can reproduce the trajectory.
+     * Pre-simulate in the LIVE world (this.world). Used by roll(), which
+     * has just cleared the scene so the live world is empty and we're free
+     * to use it as the prediction substrate. Same world + same seeds + same
+     * integrator as the visible spawn that follows = same trajectory, so
+     * the predicted face is guaranteed to be the face that lands up.
+     * Invisible bodies are removed from the world before returning.
      * @private
      */
-    _preSimulate(diceConfig) {
+    _preSimulateInLiveWorld(diceConfig) {
+        const dice = [];
+        const seeds = [];
+        diceConfig.forEach((diceRoll) => {
+            const repeatCount = diceRoll.dice === 'd100' ? 2 : 1;
+            for (let i = 0; i < repeatCount; i++) {
+                // Spawn into this.world without adding to the scene — these
+                // are prediction-only bodies; nothing should be rendered.
+                const die = createDie(
+                    diceRoll.dice, false, i === 0,
+                    diceRoll.rolled, null,
+                    this.diceMaterial, null, this.world,
+                    diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
+                    diceRoll.isSecret
+                );
+                const seed = this._generateRandomSeed();
+                seeds.push(seed);
+                if (!die) {
+                    dice.push(null);
+                    continue;
+                }
+                die.isFirst = !(i > 0 && diceRoll.dice === 'd100');
+                this._applyDiePhysics(die, seed);
+                dice.push(die);
+            }
+        });
+
+        const maxSteps = 5000;
+        const minSteps = 60;
+        for (let step = 0; step < maxSteps; step++) {
+            this.world.step(1 / 60);
+            if (step < minSteps) continue;
+            const allSettled = dice.every(d => !d || this._isBodySettled(d.body));
+            if (allSettled) break;
+        }
+
+        const closestIndexes = dice.map(d => {
+            if (!d) return null;
+            d.mesh.quaternion.copy(d.body.quaternion);
+            return getDieValue(d, this.up)[1];
+        });
+
+        // Remove the prediction bodies from the world so they don't
+        // collide with the visible dice we're about to spawn with the
+        // same seeds.
+        for (const d of dice) {
+            if (d && d.body) this.world.removeBody(d.body);
+        }
+
+        return { closestIndexes, seeds };
+    }
+
+    /**
+     * Pre-simulate dice in an isolated temp world. Used by addDice(), which
+     * adds new dice to an already-running scene where this.world is busy
+     * with in-flight dice we mustn't disturb. The trade-off is that the
+     * temp world's fixed-step integration diverges from the live world's
+     * variable-dt integration, which can produce `variances` — documented
+     * behavior for mid-roll additions.
+     * @private
+     */
+    _preSimulateInTempWorld(diceConfig) {
         const { world: tempWorld, diceMaterial: tempDiceMaterial } = this._createTempWorld();
 
         const dice = [];
@@ -698,78 +775,6 @@ export class DiceRoller {
     }
 
     /**
-     * If the die settled on a face other than the one the pre-sim chose,
-     * swap mesh materials so the texture painted for the target value moves
-     * onto whichever face actually landed up. `die.closestIndex` is updated
-     * to the new face index so subsequent `getDieValue` calls — which
-     * substitute `targetNumber` at `foundClosestIndex` — report the target
-     * value.
-     *
-     * No-op when the physics-settled face already matches the pre-sim
-     * choice (the common case — only triggers on the fp-drift cases the
-     * v1.1 author's note acknowledges as "harder" to fix without
-     * library help). The die never physically rotates.
-     * @private
-     */
-    _swapTargetToVisibleFace(die) {
-        if (die.closestIndex == null) return;
-        if (!Array.isArray(die.mesh.material)) return;
-
-        const actualIndex = this._findReadFaceIndex(die);
-        if (actualIndex == null) return;
-        // Deviation check — physics matched the pre-sim, leave the die alone.
-        if (actualIndex === die.closestIndex) return;
-
-        // Geometry groups skip materialIndex 0 (chamfer); face material
-        // indexes are therefore `faceIndex + 1`.
-        const a = actualIndex + 1;
-        const b = die.closestIndex + 1;
-        const materials = die.mesh.material;
-        if (a >= materials.length || b >= materials.length) return;
-
-        const tmp = materials[a];
-        materials[a] = materials[b];
-        materials[b] = tmp;
-
-        // Re-anchor closestIndex onto the face that's actually up, so
-        // getDieValue's substitution slot lines up with the visible face.
-        die.closestIndex = actualIndex;
-    }
-
-    /**
-     * Index of the face whose normal most agrees with the read direction
-     * (this.up for most dice; -this.up for d4, which is read off its
-     * bottom face). Mirrors the iteration in `getDieValue` but returns the
-     * raw physics-settled index without any target substitution.
-     * @private
-     */
-    _findReadFaceIndex(die) {
-        const geometry = die.mesh.geometry;
-        const position = geometry.attributes.position;
-        const wantMax = die.type !== 'd4';
-        let extreme = wantMax ? -Infinity : Infinity;
-        let bestIdx = null;
-        for (let i = 0; i < geometry.groups.length; i++) {
-            const group = geometry.groups[i];
-            if (group.materialIndex === 0) continue;
-            const v0 = new THREE.Vector3().fromBufferAttribute(position, group.start);
-            const v1 = new THREE.Vector3().fromBufferAttribute(position, group.start + 1);
-            const v2 = new THREE.Vector3().fromBufferAttribute(position, group.start + 2);
-            const normal = new THREE.Vector3()
-                .subVectors(v1, v0)
-                .cross(new THREE.Vector3().subVectors(v2, v0))
-                .normalize();
-            const worldNormal = normal.clone().applyQuaternion(die.mesh.quaternion);
-            const dot = worldNormal.dot(this.up);
-            if (wantMax ? dot > extreme : dot < extreme) {
-                extreme = dot;
-                bestIdx = group.materialIndex - 1;
-            }
-        }
-        return bestIdx;
-    }
-
-    /**
      * Value the die would report if its predetermined face were up — i.e. the
      * server-authoritative result regardless of how the live animation settled.
      * @private
@@ -823,27 +828,6 @@ export class DiceRoller {
             const allSettled = batch.dice.every(d => this._isBodySettled(d.body));
             if (allSettled) {
                 batch.resolved = true;
-                // Optional face-swap: when the caller passed `pinToTarget: true`
-                // to roll(), each die's materials are swapped so the texture
-                // painted for the target value moves to whichever face
-                // actually landed up. The die does NOT physically rotate —
-                // its physics-settled orientation is preserved, only the
-                // visible texture is reassigned. This matches the v1.1
-                // contract (visible value === authoritative target) without
-                // the visual jerk a rotation snap would cause.
-                //
-                // Off by default: the natural physics outcome is preserved
-                // for callers that *want* to see adjustments — e.g. the
-                // originator of a roll. Spectators replaying a broadcast
-                // roll typically want it on so fp drift between their pre-sim
-                // and live world can't make their faces disagree with the
-                // values the originator broadcast.
-                //
-                // addDice() batches never face-swap — variance is documented
-                // behavior for mid-roll additions (collisions with live dice).
-                if (batch.pinToTarget) {
-                    for (const d of batch.dice) this._swapTargetToVisibleFace(d);
-                }
                 const result = this._computeBatchResults(batch.dice);
                 // Fire effects FIRST (rules + imperative hook) so they're queued before
                 // the promise resolves — otherwise user code that fires its own effects
