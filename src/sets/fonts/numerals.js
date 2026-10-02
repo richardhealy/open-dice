@@ -10,6 +10,12 @@ export const NUMERAL_FONT_FAMILY = 'OpenDiceNumerals';
 export const NUMERAL_FONT_FALLBACK = `${NUMERAL_FONT_FAMILY}, Georgia, "Times New Roman", serif`;
 
 let fontPromise = null;
+let fontReady = false;
+
+/** True once the embedded font is usable by canvas. Textures painted before this are keyed apart. */
+export function isNumeralFontReady() {
+    return fontReady;
+}
 
 /** Resolves true once the font is usable by canvas, false when it cannot be loaded. */
 export function ensureNumeralFont() {
@@ -26,6 +32,7 @@ export function ensureNumeralFont() {
             );
             await face.load();
             document.fonts.add(face);
+            fontReady = true;
             return true;
         } catch (err) {
             console.warn('open-dice-dnd: the numeral font failed to load; using a system serif instead.', err);
@@ -37,4 +44,10 @@ export function ensureNumeralFont() {
 
 export function _resetNumeralFontForTests() {
     fontPromise = null;
+    fontReady = false;
+}
+
+export function _setNumeralFontReadyForTests(value) {
+    fontReady = !!value;
+    fontPromise = value ? Promise.resolve(true) : null;
 }

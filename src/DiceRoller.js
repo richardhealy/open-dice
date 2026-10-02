@@ -5,8 +5,7 @@ import { DecalRegistry } from './decal-registry.js';
 import { SoundManager } from './sound-manager.js';
 import { glow, scalePulse, haloRing, runEffectsRules } from './effects/index.js';
 import { resolveSet, CLASSIC } from './sets/index.js';
-import { ensureNumeralFont } from './sets/fonts/numerals.js';
-import { installEnvironment } from './sets/environment.js';
+import { prepareDiceSets } from './sets/prepare.js';
 
 const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
@@ -417,8 +416,7 @@ export class DiceRoller {
     /** Load the numeral font and install the environment map, once per roller. @private */
     _ensureSetAssets() {
         if (!this._setAssetsPromise) {
-            this._setAssetsPromise = ensureNumeralFont().then(() => {
-                installEnvironment(this.renderer, this.scene);
+            this._setAssetsPromise = prepareDiceSets({ renderer: this.renderer, scene: this.scene }).then(() => {
                 this._setAssetsReady = true;
             });
         }

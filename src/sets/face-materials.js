@@ -4,6 +4,7 @@ import { CLASSIC, resolveSet } from './index.js';
 import { createEdgeMaterial, createFaceMaterial } from './materials.js';
 import { paintFace, paintNormalMap } from './face-painter.js';
 import { cacheKey, getOrCreateTexture } from './texture-cache.js';
+import { isNumeralFontReady, ensureNumeralFont } from './fonts/numerals.js';
 
 /** One material for every slot of a die that is never rendered (prediction bodies). */
 export const PLACEHOLDER_MATERIAL = new THREE.MeshBasicMaterial({ color: 0x808080 });
@@ -50,27 +51,28 @@ function canvasTexture(canvas) {
     return texture;
 }
 
+/**
+ * Classic paints one texture per slot per die, exactly as before dice sets: it is a fill
+ * and a fillText, and caching it by colour would pin a texture for every colour pair a
+ * table of players ever rolls (review I3).
+ */
 function buildClassicMaterials({ type, count, faces, colors, isSecret = false, decals = null, decalRegistry = null, textOffsetY = 0, textureTuning }) {
     const materials = [];
     for (let i = 0; i < count; i++) {
         const face = faces[i] || null;
-        const key = cacheKey([CLASSIC, type, 'albedo', faceKey(face, isSecret, decals, textOffsetY),
-            colors.textColor, colors.backgroundColor, textureTuning ? 'tuned' : '']);
-        const texture = getOrCreateTexture(key, () => {
-            let painted;
-            if (face && face.values) {
-                painted = createD4FaceTexture({
-                    values: face.values, textColor: colors.textColor, backgroundColor: colors.backgroundColor, decals, decalRegistry,
-                });
-            } else {
-                const text = face && face.text !== undefined && face.text !== null ? String(face.text) : '';
-                const decal = (text && decals) ? decals[text] : null;
-                painted = createFaceTexture({
-                    text, textColor: colors.textColor, backgroundColor: colors.backgroundColor, decal, decalRegistry, isSecret, textOffsetY,
-                });
-            }
-            return applyTuning(painted, textureTuning);
-        });
+        let texture;
+        if (face && face.values) {
+            texture = createD4FaceTexture({
+                values: face.values, textColor: colors.textColor, backgroundColor: colors.backgroundColor, decals, decalRegistry,
+            });
+        } else {
+            const text = face && face.text !== undefined && face.text !== null ? String(face.text) : '';
+            const decal = (text && decals) ? decals[text] : null;
+            texture = createFaceTexture({
+                text, textColor: colors.textColor, backgroundColor: colors.backgroundColor, decal, decalRegistry, isSecret, textOffsetY,
+            });
+        }
+        applyTuning(texture, textureTuning);
         materials.push(new THREE.MeshPhongMaterial({
             specular: 0x172022,
             color: colors.diceColor,
@@ -84,7 +86,12 @@ function buildClassicMaterials({ type, count, faces, colors, isSecret = false, d
 
 /** Albedo (+ MR, + emissive when the set needs them) for one face, cached and decal-aware. */
 function faceTextures(set, type, face, isSecret, decals, decalRegistry, textOffsetY) {
-    const fk = faceKey(face, isSecret, decals, textOffsetY);
+    // Faces painted before the embedded font is usable fall back to a system serif; they are
+    // keyed apart so the cache never serves them once the font has loaded (review I2), and
+    // the load is kicked off here for callers that use createDie() without a roller.
+    const fontReady = isNumeralFontReady();
+    if (!fontReady) ensureNumeralFont();
+    const fk = cacheKey([faceKey(face, isSecret, decals, textOffsetY), fontReady ? 'f1' : 'f0']);
     const modes = ['albedo'];
     if (set.numeral.style === 'inlay' || set.decor) modes.push('mr');
     if (set.numeral.style === 'glow') modes.push('emissive');

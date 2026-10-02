@@ -4,6 +4,8 @@ import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
 import { buildFaceMaterials, materialCount, PLACEHOLDER_MATERIAL } from '../../src/sets/face-materials.js';
 import { clearDiceSetCaches, cacheSize } from '../../src/sets/texture-cache.js';
 import { _resetRegistryForTests } from '../../src/sets/index.js';
+import { _setNumeralFontReadyForTests } from '../../src/sets/fonts/numerals.js';
+import { _clearPatternCacheForTests } from '../../src/sets/face-painter.js';
 import { makeRecordingCanvas } from './helpers/canvas-stub.js';
 import { GEM, INLAY, GLOW, NO_EDGE } from './helpers/sets.js';
 
@@ -19,6 +21,8 @@ describe('buildFaceMaterials', () => {
     let canvases, restore;
     beforeEach(() => {
         clearDiceSetCaches();
+        _clearPatternCacheForTests();
+        _setNumeralFontReadyForTests(true);
         _resetRegistryForTests();
         canvases = [];
         restore = setCanvasFactories({
@@ -57,9 +61,8 @@ describe('buildFaceMaterials', () => {
 
     it('classic: d4 corner faces use the corner painter', () => {
         const mats = buildFaceMaterials({ type: 'd4', geometry: geometryWithGroups(3), faces: [null, null, { values: [2, 4, 3] }], colors: COLORS });
-        // The two blank slots share one cached texture, so the corner canvas is the last one made.
         const corner = canvases.at(-1);
-        expect(canvases).toHaveLength(2);
+        expect(canvases).toHaveLength(3);                                   // classic is never cached: one canvas per slot
         expect(corner.calls.filter((c) => c.name === 'fillText').map((c) => c.args[0])).toEqual(['2', '4', '3']);
         expect(mats[2].map.image).toBe(corner);
     });
@@ -125,6 +128,35 @@ describe('buildFaceMaterials', () => {
         expect(b[1]).not.toBe(a[1]);   // materials are per die (effects mutate them)
     });
 
+    it('classic textures are per die, not cached (review I3: colour churn would pin them forever)', () => {
+        const a = buildFaceMaterials({ type: 'd6', geometry: geometryWithGroups(2), faces: [null, { text: '1' }], colors: COLORS });
+        const b = buildFaceMaterials({ type: 'd6', geometry: geometryWithGroups(2), faces: [null, { text: '1' }], colors: COLORS });
+        expect(b[1].map).not.toBe(a[1].map);
+        expect(cacheSize()).toBe(0);
+    });
+
+    it('set textures painted before the numeral font is ready are not reused once it is (review I2)', () => {
+        _setNumeralFontReadyForTests(false);
+        const early = buildFaceMaterials({ type: 'd6', geometry: geometryWithGroups(2), faces: [null, { text: '6' }], set: INLAY });
+        _setNumeralFontReadyForTests(true);
+        const late = buildFaceMaterials({ type: 'd6', geometry: geometryWithGroups(2), faces: [null, { text: '6' }], set: INLAY });
+        expect(late[1].map).not.toBe(early[1].map);
+        const again = buildFaceMaterials({ type: 'd6', geometry: geometryWithGroups(2), faces: [null, { text: '6' }], set: INLAY });
+        expect(again[1].map).toBe(late[1].map);
+    });
+
+    it('the body pattern is computed once per set and die type, not once per face (review I4)', () => {
+        buildFaceMaterials({ type: 'd20', geometry: geometryWithGroups(4), faces: [null, { text: '1' }, { text: '2' }, { text: '3' }], set: GEM });
+        const patternPaints = canvases.filter((c) => c.calls.some((x) => x.name === 'putImageData') && !c.calls.some((x) => x.name === 'fillText'));
+        // one pattern canvas (putImageData, no text) + one normal map canvas; every face draws the pattern with drawImage
+        expect(patternPaints).toHaveLength(2);
+        const faceCanvases = canvases.filter((c) => c.calls.some((x) => x.name === 'fillText'));
+        for (const c of faceCanvases) {
+            expect(c.calls.filter((x) => x.name === 'putImageData')).toHaveLength(0);
+            expect(c.calls.filter((x) => x.name === 'drawImage').length).toBeGreaterThanOrEqual(1);
+        }
+    });
+
     it('an unknown set id renders classic and warns', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         const mats = buildFaceMaterials({ type: 'd6', geometry: geometryWithGroups(2), faces: [null, { text: '3' }], colors: COLORS, set: 'not-a-set' });
@@ -142,7 +174,7 @@ describe('buildFaceMaterials', () => {
         await new Promise((r) => setTimeout(r, 0));
         await new Promise((r) => setTimeout(r, 0));
         expect(albedo.calls.length).toBeGreaterThan(before);
-        expect(albedo.calls.filter((c) => c.name === 'drawImage')).toHaveLength(1);
+        expect(albedo.calls.filter((c) => c.name === 'drawImage' && c.args[0] === img)).toHaveLength(1);   // the icon, once
         expect(mr.calls.filter((c) => c.name === 'fillText').length).toBe(1);       // the first paint only; the repaint has no glyph
     });
 });

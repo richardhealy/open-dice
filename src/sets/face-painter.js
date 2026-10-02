@@ -47,25 +47,49 @@ function fontString(set, px) {
     return `${set.numeral.weight} ${Math.round(px)}px ${family}`;
 }
 
-function paintPatternPixels(ctx, ts, set, type) {
+/**
+ * The body pattern is seeded per (set, type) and identical on every face, so it is computed
+ * once: a canvas of blended colour for the albedo and the raw values for the relief map.
+ */
+const patternCache = new Map();
+
+function getPattern(set, type) {
+    const key = `${set.id}|${type}`;
+    let entry = patternCache.get(key);
+    if (entry) return entry;
+    const ts = TEXTURE_SIZE;
     const { kind, color2, scale, contrast } = set.body.texture;
     const seed = hashSeed(`${set.id}:${type}`);
     const base = hexToRgb(shade(set.body.color, BODY_EXPOSURE));
     const second = hexToRgb(shade(color2, BODY_EXPOSURE));
+    const canvas = createCanvas(ts);
+    const ctx = canvas.getContext('2d');
     const img = ctx.createImageData(ts, ts);
     const data = img.data;
+    const values = new Float32Array(ts * ts);
     for (let y = 0; y < ts; y++) {
         for (let x = 0; x < ts; x++) {
-            const t = pattern(kind, seed, x / ts, y / ts, scale) * contrast;
-            const i = (y * ts + x) * 4;
-            data[i] = base[0] + (second[0] - base[0]) * t;
-            data[i + 1] = base[1] + (second[1] - base[1]) * t;
-            data[i + 2] = base[2] + (second[2] - base[2]) * t;
-            data[i + 3] = 255;
+            const v = pattern(kind, seed, x / ts, y / ts, scale);
+            const t = v * contrast;
+            const i = y * ts + x;
+            values[i] = v;
+            data[i * 4] = base[0] + (second[0] - base[0]) * t;
+            data[i * 4 + 1] = base[1] + (second[1] - base[1]) * t;
+            data[i * 4 + 2] = base[2] + (second[2] - base[2]) * t;
+            data[i * 4 + 3] = 255;
         }
     }
     ctx.putImageData(img, 0, 0);
+    entry = { canvas, values };
+    patternCache.set(key, entry);
+    return entry;
 }
+
+export function clearPatternCache() {
+    patternCache.clear();
+}
+
+export const _clearPatternCacheForTests = clearPatternCache;
 
 function paintDepth(ctx, ts, set, type) {
     const R = frameRadius(FACE_FRAMES[type], ts);
@@ -88,7 +112,7 @@ function fillBase(ctx, ts, set, type, mode) {
     if (mode === 'albedo') {
         ctx.fillStyle = shade(set.body.color, BODY_EXPOSURE);
         ctx.fillRect(0, 0, ts, ts);
-        if (set.body.texture) paintPatternPixels(ctx, ts, set, type);
+        if (set.body.texture) ctx.drawImage(getPattern(set, type).canvas, 0, 0);
         if (FAMILY_DEFAULTS[set.family].depthGradient) paintDepth(ctx, ts, set, type);
     } else if (mode === 'mr') {
         ctx.fillStyle = mrColor(set.body.roughness, set.body.metalness);
@@ -268,13 +292,8 @@ export function paintNormalMap({ set, type }) {
 
     const height = new Uint8ClampedArray(ts * ts);
     if (textureStrength > 0) {
-        const { kind, scale } = set.body.texture;
-        const seed = hashSeed(`${set.id}:${type}`);
-        for (let y = 0; y < ts; y++) {
-            for (let x = 0; x < ts; x++) {
-                height[y * ts + x] = pattern(kind, seed, x / ts, y / ts, scale) * textureStrength * 160;
-            }
-        }
+        const { values } = getPattern(set, type);
+        for (let i = 0; i < ts * ts; i++) height[i] = values[i] * textureStrength * 160;
     }
     if (relief > 0) {
         const { canvas } = paintFace({ set, type, face: null, mode: 'height' });

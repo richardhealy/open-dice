@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
-import { paintFace, paintNormalMap, shade, mrColor, hexToRgb, TEXTURE_SIZE, BODY_EXPOSURE } from '../../src/sets/face-painter.js';
+import { paintFace, paintNormalMap, shade, mrColor, hexToRgb, TEXTURE_SIZE, BODY_EXPOSURE, _clearPatternCacheForTests } from '../../src/sets/face-painter.js';
 import { makeRecordingCanvas, callsNamed } from './helpers/canvas-stub.js';
 import { GEM, INLAY, GLOW, NO_EDGE } from './helpers/sets.js';
 
@@ -11,6 +11,7 @@ const stylesSet = (c) => callsNamed(c, 'set:fillStyle').map((x) => x.args[0]);
 describe('face painter', () => {
     let canvases, restore;
     beforeEach(() => {
+        _clearPatternCacheForTests();
         canvases = [];
         restore = setCanvasFactories({
             canvas: (size) => { const c = makeRecordingCanvas(size); canvases.push(c); return c; },
@@ -34,7 +35,8 @@ describe('face painter', () => {
         // back up to it (the lights are shared with classic dice and cannot change).
         expect(BODY_EXPOSURE).toBeLessThan(0);
         expect(stylesSet(canvas)[0]).toBe(shade('#B5173A', BODY_EXPOSURE));
-        expect(callsNamed(canvas, 'putImageData')).toHaveLength(1);                 // veins pattern
+        expect(callsNamed(canvas, 'putImageData')).toHaveLength(0);                 // the veins pattern is a shared canvas ...
+        expect(callsNamed(canvas, 'drawImage')).toHaveLength(1);                    // ... drawn onto the face
         expect(callsNamed(canvas, 'createRadialGradient')).toHaveLength(2);         // depth + sheen
         expect(callsNamed(canvas, 'translate')[0].args).toEqual([128, 128]);        // frame transform
         expect(callsNamed(canvas, 'scale')[0].args).toEqual([160, -160]);
@@ -59,11 +61,13 @@ describe('face painter', () => {
         const img = { width: 64, height: 64 };
         const registry = { get: () => img, load: () => Promise.resolve(img) };
         const albedo = paintFace({ set: INLAY, type: 'd6', face: { text: '1' }, decals: { '1': { src: '/sword.svg', scale: 0.7 } }, decalRegistry: registry, mode: 'albedo' });
-        expect(callsNamed(albedo.canvas, 'drawImage')).toHaveLength(1);
+        const decalDraws = (c) => callsNamed(c, 'drawImage').filter((x) => x.args[0] === img);
+        expect(decalDraws(albedo.canvas)).toHaveLength(1);                            // the icon, once
+        expect(callsNamed(albedo.canvas, 'drawImage').length - 1).toBe(1);             // plus the shared marble pattern, once
         expect(fillTexts(albedo.canvas)).toEqual([]);
         const mr = paintFace({ set: INLAY, type: 'd6', face: { text: '1' }, decals: { '1': { src: '/sword.svg', scale: 0.7 } }, decalRegistry: registry, mode: 'mr' });
         expect(fillTexts(mr.canvas)).toEqual([]);
-        expect(callsNamed(mr.canvas, 'drawImage')).toHaveLength(0);
+        expect(decalDraws(mr.canvas)).toHaveLength(0);
     });
 
     it('an unloaded decal paints the numeral now and reports the pending source', () => {
@@ -121,7 +125,7 @@ describe('face painter', () => {
         const existing = makeRecordingCanvas(256);
         const { canvas } = paintFace({ set: GEM, type: 'd6', face: { text: '2' }, mode: 'albedo', canvas: existing });
         expect(canvas).toBe(existing);
-        expect(canvases).toHaveLength(0);
+        expect(canvases.filter((c) => c.calls.some((x) => x.name === 'fillText'))).toHaveLength(0);   // no new face canvas
         expect(callsNamed(existing, 'setTransform')[0].args).toEqual([1, 0, 0, 1, 0, 0]);
     });
 

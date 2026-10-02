@@ -15,7 +15,8 @@ const updateBaseline = args.includes('--update-baseline');
 const previews = args.includes('--previews');
 const setsArg = args.find((a) => a.startsWith('--sets='));
 const PORT = 5178;
-const TYPES = ['d20', 'd6'];
+const CLASSIC_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];   // every type has a pre-branch baseline
+const TYPES = ['d20', 'd6', 'd10', 'd100'];                                 // set renders and comparisons
 const CLASSIC_TOLERANCE = 0.005;
 const SET_MIN_DIFF = 0.05;
 
@@ -67,7 +68,7 @@ try {
     if (setsArg) setIds = ['classic', ...setsArg.slice('--sets='.length).split(',').filter((s) => s && s !== 'classic')];
 
     for (const setId of setIds) {
-        for (const type of TYPES) {
+        for (const type of (setId === 'classic' ? CLASSIC_TYPES : TYPES)) {
             const dataUrl = await page.evaluate(([s, t]) => window.__renderDie(t, s), [setId, type]);
             savePng(dataUrl, resolve(outDir, `${setId}-${type}.png`));
             if (previews && setId !== 'classic') {
@@ -77,15 +78,20 @@ try {
         }
     }
 
-    const baselinePath = resolve(baselineDir, 'classic-d20.png');
-    if (updateBaseline || !existsSync(baselinePath)) {
-        copyFileSync(resolve(outDir, 'classic-d20.png'), baselinePath);
-        console.log(`baseline written: ${baselinePath}`);
-    } else {
-        await page.evaluate((url) => window.__loadBaseline(url), `/baseline/classic-d20.png?${Date.now()}`);
-        const d = await page.evaluate(() => window.__diff('classic-d20', 'baseline'));
+    // Classic must match the pre-branch baseline for every die type. Baselines were captured
+    // from the merge-base source (git archive 3f208be) with this fixture; --update-baseline
+    // rewrites them from the current code and is only legitimate after a deliberate change.
+    for (const type of CLASSIC_TYPES) {
+        const baselinePath = resolve(baselineDir, `classic-${type}.png`);
+        if (updateBaseline || !existsSync(baselinePath)) {
+            copyFileSync(resolve(outDir, `classic-${type}.png`), baselinePath);
+            console.log(`baseline written: ${baselinePath}`);
+            continue;
+        }
+        await page.evaluate((url) => window.__loadBaseline(url), `/baseline/classic-${type}.png?${Date.now()}`);
+        const d = await page.evaluate((key) => window.__diff(key, 'baseline'), `classic-${type}`);
         const ok = d <= CLASSIC_TOLERANCE;
-        console.log(`${ok ? 'PASS' : 'FAIL'} classic-d20 vs baseline: ${(d * 100).toFixed(3)}% differing (limit ${(CLASSIC_TOLERANCE * 100).toFixed(1)}%)`);
+        console.log(`${ok ? 'PASS' : 'FAIL'} classic-${type} vs baseline: ${(d * 100).toFixed(3)}% differing (limit ${(CLASSIC_TOLERANCE * 100).toFixed(1)}%)`);
         if (!ok) failures++;
     }
 
@@ -97,6 +103,16 @@ try {
             console.log(`${ok ? 'PASS' : 'FAIL'} ${setId}-${type} differs from classic: ${(d * 100).toFixed(1)}% (needs >= ${(SET_MIN_DIFF * 100).toFixed(0)}%)`);
             if (!ok) failures++;
         }
+    }
+
+    // Sets must also differ from one another (a silhouette-only difference from classic
+    // would pass the check above even if every set rendered the same).
+    const premium = setIds.filter((s) => s !== 'classic');
+    for (let i = 1; i < premium.length; i++) {
+        const d = await page.evaluate(([a, b]) => window.__diff(a, b), [`${premium[i]}-d20`, `${premium[i - 1]}-d20`]);
+        const ok = d >= SET_MIN_DIFF;
+        console.log(`${ok ? 'PASS' : 'FAIL'} ${premium[i]}-d20 differs from ${premium[i - 1]}-d20: ${(d * 100).toFixed(1)}% (needs >= ${(SET_MIN_DIFF * 100).toFixed(0)}%)`);
+        if (!ok) failures++;
     }
 
     if (errors.length) {

@@ -3,6 +3,8 @@
  * wrapping canvases; sharing one across meshes and renderers is safe (each renderer
  * uploads its own copy). Keyed by set id, die type, map kind and the face description.
  */
+import { clearPatternCache } from './face-painter.js';
+
 const cache = new Map();
 
 export function cacheKey(parts) {
@@ -24,6 +26,7 @@ export function clearDiceSetCaches() {
         if (texture && typeof texture.dispose === 'function') texture.dispose();
     }
     cache.clear();
+    clearPatternCache();
 }
 
 export function cacheSize() {

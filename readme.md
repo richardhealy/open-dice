@@ -189,6 +189,7 @@ Rules:
 - `decals` and `isSecret` work with every set.
 - An unknown set id logs one warning and renders `classic`, so a stale id can never break a roll.
 - The first roll that uses a set waits a few milliseconds for the numeral font and the reflection map. `preloadSets()` moves that cost to page load.
+- Using `createDie(type, ..., { set })` directly, without a roller (for example to draw a picker preview), paints faces as soon as it is called. Await `prepareDiceSets({ renderer, scene })` first so the numeral font and the reflection environment are ready; textures painted before the font loads use a system serif and are cached separately.
 
 ### Custom sets
 

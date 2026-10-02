@@ -12,6 +12,8 @@ export { SoundManager } from './sound-manager.js';
 export { registerDiceSet, listDiceSets, getDiceSet, resolveSet, CLASSIC as CLASSIC_DICE_SET } from './sets/index.js';
 export { clearDiceSetCaches } from './sets/texture-cache.js';
 export { installEnvironment } from './sets/environment.js';
+export { ensureNumeralFont } from './sets/fonts/numerals.js';
+export { prepareDiceSets } from './sets/prepare.js';
 import * as diceSetsNamespace from './sets/index.js';
 export const diceSets = diceSetsNamespace;
 
