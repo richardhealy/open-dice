@@ -1,4 +1,4 @@
-import { DiceRoller, effects, presets } from '../src/index.js';
+import { DiceRoller, effects, presets, listDiceSets } from '../src/index.js';
 
 const container = document.getElementById('scene-container');
 const resultsContainer = document.getElementById('results-container');
@@ -50,6 +50,20 @@ const diceRoller = new DiceRoller({
     onRollComplete: (_total, result) => {
         lastMainResult = result;
     },
+});
+
+// ----- Dice set picker -----
+const diceSetSelect = document.getElementById('dice-set');
+for (const set of listDiceSets()) {
+    const option = document.createElement('option');
+    option.value = set.id;
+    option.textContent = set.name;
+    diceSetSelect.appendChild(option);
+}
+diceSetSelect.addEventListener('change', () => {
+    const id = diceSetSelect.value;
+    diceRoller.setDefaultSet(id === 'classic' ? null : id);
+    if (id !== 'classic') diceRoller.preloadSets([id]);
 });
 
 // ----- Effect rules editor -----
