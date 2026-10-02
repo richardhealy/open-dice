@@ -8,6 +8,13 @@ export { createDie, getDieValue } from './dice.js';
 export { DecalRegistry } from './decal-registry.js';
 export { SoundManager } from './sound-manager.js';
 
+// Dice sets: premium data-defined looks. See README "Dice sets".
+export { registerDiceSet, listDiceSets, getDiceSet, resolveSet, CLASSIC as CLASSIC_DICE_SET } from './sets/index.js';
+export { clearDiceSetCaches } from './sets/texture-cache.js';
+export { installEnvironment } from './sets/environment.js';
+import * as diceSetsNamespace from './sets/index.js';
+export const diceSets = diceSetsNamespace;
+
 // Effects: import individual factories or `presets` to build the `effects: [...]`
 // option, or import everything via `import * as effects from 'open-dice-dnd/effects'`.
 export {

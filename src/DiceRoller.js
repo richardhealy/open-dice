@@ -4,6 +4,11 @@ import { createDie, getDieValue } from './dice.js';
 import { DecalRegistry } from './decal-registry.js';
 import { SoundManager } from './sound-manager.js';
 import { glow, scalePulse, haloRing, runEffectsRules } from './effects/index.js';
+import { resolveSet, CLASSIC } from './sets/index.js';
+import { ensureNumeralFont } from './sets/fonts/numerals.js';
+import { installEnvironment } from './sets/environment.js';
+
+const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
 // Collisions below this impact speed are too quiet to be audible without distortion.
 // Above ~12 the cap kicks in.
@@ -29,6 +34,7 @@ export class DiceRoller {
      * @param {number} [options.throwSpeed=15] - Initial throw speed
      * @param {number} [options.throwSpin=20] - Initial throw spin
      * @param {Function} [options.onRollComplete] - Callback when dice settle (main rolls only)
+     * @param {string} [options.set] - Default dice set id for every die (see setDefaultSet)
      */
     constructor(options = {}) {
         if (!options.container) {
@@ -49,6 +55,11 @@ export class DiceRoller {
         // when a batch settles; matching effects are scheduled onto `this.effects`.
         this.effectRules = options.effects || null;
         this.effects = [];
+        // Default dice set for dice that do not name their own. Resolved per roll, so a set
+        // registered later still works (see _setFor).
+        this.defaultSet = options.set || null;
+        this._setAssetsReady = false;
+        this._setAssetsPromise = null;
 
         this.dice = [];
         this.diceBatches = [];
@@ -269,6 +280,17 @@ export class DiceRoller {
         if (this.floor) this.floor.material.opacity = 0.5;
         this.lastTime = undefined;
 
+        // Classic rolls stay synchronous up to the spawn (so isRolling() is true as soon as
+        // roll() returns). Only the first roll that uses a set waits for the font and the
+        // environment map, a few milliseconds once.
+        if (this._needsSetAssets(diceConfig)) {
+            return this._ensureSetAssets().then(() => this._startRoll(diceConfig));
+        }
+        return this._startRoll(diceConfig);
+    }
+
+    /** Predict, spawn and resolve one main batch. @private */
+    _startRoll(diceConfig) {
         const { closestIndexes, seeds } = this._preSimulateInLiveWorld(diceConfig);
 
         return new Promise((resolve) => {
@@ -341,6 +363,55 @@ export class DiceRoller {
         this.effectRules = rules;
     }
 
+    /** Change the default dice set for later rolls. Pass null to return to classic dice. */
+    setDefaultSet(id) {
+        this.defaultSet = id || null;
+    }
+
+    /**
+     * Prepare dice sets ahead of the first roll: loads the numeral font, installs the
+     * environment map, and paints every face of every die type for the listed sets so the
+     * first roll does no painting. Optional; rolls work without it.
+     * @param {string[]} ids
+     */
+    async preloadSets(ids = []) {
+        await this._ensureSetAssets();
+        for (const id of ids) {
+            const set = resolveSet(id);
+            if (set.id === CLASSIC) continue;
+            for (const type of DIE_TYPES) {
+                const halves = type === 'd100' ? [true, false] : [true];
+                for (const isFirst of halves) {
+                    const die = createDie(type, true, isFirst, undefined, undefined, this.diceMaterial, null, null,
+                        null, null, null, false, null, this.decalRegistry, { set });
+                    die.mesh.material.forEach((m) => m.dispose());
+                }
+            }
+        }
+    }
+
+    /** Resolved set for one die config: die.set, then the roller default, then classic. @private */
+    _setFor(diceRoll) {
+        return resolveSet(diceRoll.set || this.defaultSet);
+    }
+
+    /** True when this config has a non-classic die and the font/environment are not ready. @private */
+    _needsSetAssets(diceConfig) {
+        if (this._setAssetsReady) return false;
+        return diceConfig.some((d) => this._setFor(d).id !== CLASSIC);
+    }
+
+    /** Load the numeral font and install the environment map, once per roller. @private */
+    _ensureSetAssets() {
+        if (!this._setAssetsPromise) {
+            this._setAssetsPromise = ensureNumeralFont().then(() => {
+                installEnvironment(this.renderer, this.scene);
+                this._setAssetsReady = true;
+            });
+        }
+        return this._setAssetsPromise;
+    }
+
     /**
      * Add dice to a scene that may already contain previously-rolled dice.
      *
@@ -362,6 +433,7 @@ export class DiceRoller {
         // for spectator-side replay, where rolls arrive over the wire and
         // should stack visually rather than crash through each other.
         await this._waitForAllBatchesResolved();
+        if (this._needsSetAssets(diceConfig)) await this._ensureSetAssets();
 
         const { closestIndexes, seeds } = this._preSimulateInLiveWorld(diceConfig);
 
@@ -419,7 +491,8 @@ export class DiceRoller {
                     diceRoll.rolled, closestIndex,
                     this.diceMaterial, this.scene, this.world,
                     diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
-                    diceRoll.isSecret, diceRoll.decals, this.decalRegistry
+                    diceRoll.isSecret, diceRoll.decals, this.decalRegistry,
+                    { set: this._setFor(diceRoll) }
                 );
                 if (!die) { cidx++; continue; }
 
