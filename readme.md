@@ -15,6 +15,7 @@ A 3D physics-based dice rolling engine built with Three.js and Cannon-es. Design
 - 🧠 Declarative rule-based effect composition (match by type/value, play combos)
 - 🔒 Secret roll mode
 - 🌈 Per-die colors (body, text, background)
+- 💎 Dice sets — five premium looks (gem, glass, textured) plus the classic default; register your own as data
 - 📦 Lightweight, modular, no UI framework lock-in
 
 ---
@@ -149,6 +150,62 @@ await diceRoller.roll([{
 ```
 
 Keys are face *values* (as strings), not face indices. Decals follow the target-rolled face-swap automatically. For d4, the lookup is per-corner (a face shows three corner values); for every other die, it's per-face.
+
+---
+
+## 💎 Dice sets
+
+A dice set is a named look: body finish, edge metal, numeral style and optional face decoration, rendered with physically based materials and reflections. Five sets ship with the library; `classic` is the original look and stays the default.
+
+| id | look |
+|---|---|
+| `classic` | The original flat-colour dice. Honours `diceColor`, `textColor`, `backgroundColor`. |
+| `ruby-jewel` | Translucent ruby, gold filigree, engraved serif numerals. |
+| `emerald-jewel` | Emerald variant of Ruby Jewel. |
+| `sapphire-jewel` | Sapphire variant of Ruby Jewel. |
+| `obsidian-gold` | Black glass, gold inlaid numerals, gold edges. |
+| `ember-dragonhide` | Dark scaled hide, iron edges, glowing ember numerals. |
+
+![Ruby Jewel d20](docs/sets/ruby-jewel-d20.png) ![Obsidian & Gold d20](docs/sets/obsidian-gold-d20.png) ![Ember Dragonhide d20](docs/sets/ember-dragonhide-d20.png)
+
+```js
+import { DiceRoller, listDiceSets, registerDiceSet } from 'open-dice-dnd';
+
+const roller = new DiceRoller({ container, set: 'ruby-jewel' });   // default for every die
+await roller.preloadSets(['ruby-jewel', 'obsidian-gold']);          // optional: paint ahead of the first roll
+
+await roller.roll([
+    { dice: 'd20', rolled: 18, set: 'emerald-jewel' },               // per-die override
+    { dice: 'd6',  rolled: 4 },                                      // roller default
+]);
+
+roller.setDefaultSet('obsidian-gold');                              // change at runtime
+listDiceSets();   // [{ id, name, family, swatch }, ...] for a picker
+```
+
+Rules:
+
+- Sets other than `classic` ignore `diceColor`, `textColor` and `backgroundColor`; their palette is the design.
+- `decals` and `isSecret` work with every set.
+- An unknown set id logs one warning and renders `classic`, so a stale id can never break a roll.
+- The first roll that uses a set waits a few milliseconds for the numeral font and the reflection map. `preloadSets()` moves that cost to page load.
+
+### Custom sets
+
+```js
+registerDiceSet({
+    id: 'house-brass',
+    name: 'House Brass',
+    family: 'metal',                                   // gem | glass | metal | textured
+    body: { color: '#8C6A2F' },
+    edge: { metal: 'bronze' },                         // gold | silver | bronze | iron | none
+    numeral: { color: '#1A1208', style: 'engraved' },  // flat | engraved | inlay | glow
+    decor: { art: 'filigree', metal: 'bronze', relief: 0.5 },
+    swatch: ['#8C6A2F', '#B07A3A'],
+});
+```
+
+Every field a built-in set uses is available; see `src/sets/builtin/` for the five shipped definitions and `src/sets/validate.js` for the accepted ranges. Textures are 256 px canvases painted once per set, die type and face value, then cached; `clearDiceSetCaches()` frees them.
 
 ---
 
@@ -409,6 +466,14 @@ npm run build
 
 ## 📝 Changelog
 
+### [1.4.0] - 2026-10-03
+
+- 💎 Dice sets: `set` option on the roller and per die, `preloadSets()`, `setDefaultSet()`, `listDiceSets()`, `registerDiceSet()`
+- Five built-in sets: Ruby, Emerald and Sapphire Jewel, Obsidian & Gold, Ember Dragonhide
+- Physically based materials with a procedural reflection environment; the chamfer bevels become a metal frame on set dice
+- Face textures are cached across rolls (classic included); prediction dice no longer paint textures
+- Classic dice are unchanged
+
 ### [1.2.0] - 2026
 
 #### ✨ New Features
@@ -493,6 +558,7 @@ MIT. See [LICENSE](./LICENSE).
 - [Three.js](https://threejs.org/) — 3D rendering
 - [Cannon-es](https://pmndrs.github.io/cannon-es/) — physics
 - [Vite](https://vitejs.dev/) — build tool
+- [Cinzel](https://github.com/NDISCOVER/Cinzel) by The Cinzel Project Authors (SIL Open Font License 1.1) — numeral font, embedded as a digits-only subset under the family name `OpenDiceNumerals`; licence in `src/sets/fonts/OFL.txt`
 
 ---
 
