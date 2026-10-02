@@ -60,6 +60,11 @@ export class DiceRoller {
         this.defaultSet = options.set || null;
         this._setAssetsReady = false;
         this._setAssetsPromise = null;
+        // A roll that waits for set assets must not spawn if a later roll() wiped the table
+        // meanwhile, or if the roller was destroyed. isRolling() counts the wait.
+        this._rollGeneration = 0;
+        this._pendingSetRolls = 0;
+        this._destroyed = false;
 
         this.dice = [];
         this.diceBatches = [];
@@ -283,8 +288,16 @@ export class DiceRoller {
         // Classic rolls stay synchronous up to the spawn (so isRolling() is true as soon as
         // roll() returns). Only the first roll that uses a set waits for the font and the
         // environment map, a few milliseconds once.
+        const generation = ++this._rollGeneration;
         if (this._needsSetAssets(diceConfig)) {
-            return this._ensureSetAssets().then(() => this._startRoll(diceConfig));
+            this._pendingSetRolls++;
+            return this._ensureSetAssets().then(() => {
+                this._pendingSetRolls--;
+                // A later roll() wiped the table while we waited, or the roller is gone: never
+                // spawn. The promise stays pending, exactly as a wiped batch's promise always has.
+                if (this._destroyed || generation !== this._rollGeneration) return new Promise(() => {});
+                return this._startRoll(diceConfig);
+            });
         }
         return this._startRoll(diceConfig);
     }
@@ -326,7 +339,7 @@ export class DiceRoller {
      * `addDice()` instead.
      */
     isRolling() {
-        return this.diceBatches.some(b => !b.resolved && b.dice.length > 0);
+        return this._pendingSetRolls > 0 || this.diceBatches.some(b => !b.resolved && b.dice.length > 0);
     }
 
     /**
@@ -434,6 +447,7 @@ export class DiceRoller {
         // should stack visually rather than crash through each other.
         await this._waitForAllBatchesResolved();
         if (this._needsSetAssets(diceConfig)) await this._ensureSetAssets();
+        if (this._destroyed) return new Promise(() => {});
 
         const { closestIndexes, seeds } = this._preSimulateInLiveWorld(diceConfig);
 
@@ -808,6 +822,7 @@ export class DiceRoller {
 
     /** @private */
     _ensureAnimating() {
+        if (this._destroyed) return;
         if (!this.isAnimating) {
             this.isAnimating = true;
             this.lastTime = undefined;
@@ -885,6 +900,7 @@ export class DiceRoller {
      * Destroy the dice roller instance and clean up resources
      */
     destroy() {
+        this._destroyed = true;
         this.isAnimating = false;
 
         if (this.animationFrameId) {
