@@ -10,7 +10,7 @@ export function createRoomScene() {
     const room = new THREE.Scene();
     const box = new THREE.BoxGeometry(1, 1, 1);
 
-    const shell = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x1a1a1f, side: THREE.BackSide }));
+    const shell = new THREE.Mesh(box, new THREE.MeshBasicMaterial({ color: 0x141418, side: THREE.BackSide }));
     shell.scale.set(30, 30, 30);
     room.add(shell);
 
@@ -20,12 +20,14 @@ export function createRoomScene() {
         mesh.scale.set(...scale);
         room.add(mesh);
     };
-    panel([40, 38, 34], [0, 14, 0], [10, 0.2, 6]);        // key light overhead
-    panel([10, 11.5, 14], [-14, 6, 4], [0.2, 6, 8]);      // cool fill, left
-    panel([8, 8.5, 10], [14, 4, -6], [0.2, 5, 7]);        // cool fill, right
-    panel([18, 12, 7], [2, 3, -14], [8, 4, 0.2]);         // warm rim, back
-    panel([6, 6, 6], [0, -14, 0], [12, 0.2, 12]);         // floor bounce
-    panel([14, 13, 12], [6, 11, 10], [3, 0.2, 3]);        // small front highlight
+    // The renderer has no tone mapping, so radiance far above 1 clips to white; keep these
+    // panels just bright enough to read as soft lights in metal and clearcoat.
+    panel([1.8, 1.7, 1.55], [0, 14, 0], [10, 0.2, 6]);    // key light overhead
+    panel([0.9, 1.0, 1.2], [-14, 6, 4], [0.2, 6, 8]);     // cool fill, left
+    panel([0.7, 0.75, 0.9], [14, 4, -6], [0.2, 5, 7]);    // cool fill, right
+    panel([1.4, 1.0, 0.6], [2, 3, -14], [8, 4, 0.2]);     // warm rim, back
+    panel([0.5, 0.5, 0.5], [0, -14, 0], [12, 0.2, 12]);   // floor bounce
+    panel([1.2, 1.1, 1.0], [6, 11, 10], [3, 0.2, 3]);     // small front highlight
     return room;
 }
 

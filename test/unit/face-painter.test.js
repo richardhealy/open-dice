@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
-import { paintFace, paintNormalMap, shade, mrColor, hexToRgb, TEXTURE_SIZE } from '../../src/sets/face-painter.js';
+import { paintFace, paintNormalMap, shade, mrColor, hexToRgb, TEXTURE_SIZE, BODY_EXPOSURE } from '../../src/sets/face-painter.js';
 import { makeRecordingCanvas, callsNamed } from './helpers/canvas-stub.js';
 import { GEM, INLAY, GLOW, NO_EDGE } from './helpers/sets.js';
 
@@ -30,7 +30,10 @@ describe('face painter', () => {
     it('albedo for a gem: body fill, pattern pixels, depth gradient, decor through the frame, engraved numeral', () => {
         const { canvas, pendingDecals } = paintFace({ set: GEM, type: 'd20', face: { text: '20' }, mode: 'albedo' });
         expect(pendingDecals).toEqual([]);
-        expect(stylesSet(canvas)[0]).toBe('#B5173A');
+        // Body colours are painted below their stated value so the table's lights bring them
+        // back up to it (the lights are shared with classic dice and cannot change).
+        expect(BODY_EXPOSURE).toBeLessThan(0);
+        expect(stylesSet(canvas)[0]).toBe(shade('#B5173A', BODY_EXPOSURE));
         expect(callsNamed(canvas, 'putImageData')).toHaveLength(1);                 // veins pattern
         expect(callsNamed(canvas, 'createRadialGradient')).toHaveLength(2);         // depth + sheen
         expect(callsNamed(canvas, 'translate')[0].args).toEqual([128, 128]);        // frame transform

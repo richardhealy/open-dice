@@ -15,6 +15,12 @@ export const NUMERAL_SIZE = 0.445;
 export const CORNER_SIZE = 0.266;
 /** d4 corner numerals sit this fraction of the canvas above the centre, as today. */
 export const CORNER_OFFSET = 0.3;
+/**
+ * Body colours are painted this much darker than stated. The table's ambient and key lights
+ * (shared with classic dice, so they cannot change) plus the environment lift a physically
+ * based albedo by roughly 1.5x; this brings a stated colour back to itself on screen.
+ */
+export const BODY_EXPOSURE = -0.38;
 
 export function hexToRgb(hex) {
     const n = parseInt(hex.slice(1), 16);
@@ -44,8 +50,8 @@ function fontString(set, px) {
 function paintPatternPixels(ctx, ts, set, type) {
     const { kind, color2, scale, contrast } = set.body.texture;
     const seed = hashSeed(`${set.id}:${type}`);
-    const base = hexToRgb(set.body.color);
-    const second = hexToRgb(color2);
+    const base = hexToRgb(shade(set.body.color, BODY_EXPOSURE));
+    const second = hexToRgb(shade(color2, BODY_EXPOSURE));
     const img = ctx.createImageData(ts, ts);
     const data = img.data;
     for (let y = 0; y < ts; y++) {
@@ -65,14 +71,14 @@ function paintDepth(ctx, ts, set, type) {
     const R = frameRadius(FACE_FRAMES[type], ts);
     const c = ts / 2;
     const depth = ctx.createRadialGradient(c, c, R * 0.15, c, c, R);
-    const [r, g, b] = hexToRgb(set.body.depthColor);
+    const [r, g, b] = hexToRgb(shade(set.body.depthColor, BODY_EXPOSURE));
     depth.addColorStop(0, 'rgba(0,0,0,0)');
     depth.addColorStop(1, `rgba(${r},${g},${b},0.85)`);
     ctx.fillStyle = depth;
     ctx.fillRect(0, 0, ts, ts);
     // A soft highlight up-left of centre suggests a polished dome.
     const sheen = ctx.createRadialGradient(ts * 0.38, ts * 0.36, 0, ts * 0.38, ts * 0.36, R * 0.55);
-    sheen.addColorStop(0, 'rgba(255,255,255,0.18)');
+    sheen.addColorStop(0, 'rgba(255,255,255,0.08)');
     sheen.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = sheen;
     ctx.fillRect(0, 0, ts, ts);
@@ -80,7 +86,7 @@ function paintDepth(ctx, ts, set, type) {
 
 function fillBase(ctx, ts, set, type, mode) {
     if (mode === 'albedo') {
-        ctx.fillStyle = set.body.color;
+        ctx.fillStyle = shade(set.body.color, BODY_EXPOSURE);
         ctx.fillRect(0, 0, ts, ts);
         if (set.body.texture) paintPatternPixels(ctx, ts, set, type);
         if (FAMILY_DEFAULTS[set.family].depthGradient) paintDepth(ctx, ts, set, type);

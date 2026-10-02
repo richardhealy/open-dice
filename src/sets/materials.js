@@ -2,9 +2,9 @@ import * as THREE from 'three';
 
 /** Metal presets shared by edges, decoration and inlay numerals. */
 export const METALS = Object.freeze({
-    gold:   Object.freeze({ color: '#D4AF37', roughness: 0.28, metalness: 1, envMapIntensity: 1.2 }),
-    silver: Object.freeze({ color: '#C9CDD3', roughness: 0.22, metalness: 1, envMapIntensity: 1.2 }),
-    bronze: Object.freeze({ color: '#B07A3A', roughness: 0.35, metalness: 1, envMapIntensity: 1.1 }),
+    gold:   Object.freeze({ color: '#D4AF37', roughness: 0.28, metalness: 1, envMapIntensity: 1.0 }),
+    silver: Object.freeze({ color: '#C9CDD3', roughness: 0.22, metalness: 1, envMapIntensity: 1.0 }),
+    bronze: Object.freeze({ color: '#B07A3A', roughness: 0.35, metalness: 1, envMapIntensity: 1.0 }),
     iron:   Object.freeze({ color: '#5C5F66', roughness: 0.50, metalness: 1, envMapIntensity: 1.0 }),
 });
 

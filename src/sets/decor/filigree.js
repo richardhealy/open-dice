@@ -24,11 +24,11 @@ export function buildFiligree(sides, { corners = false } = {}) {
     for (let j = 0; j < sides; j++) {
         const [ax, ay] = vertex(sides, j, inset);
         const [bx, by] = vertex(sides, (j + 1) % sides, inset);
-        paths.push({ d: `M ${f(ax)} ${f(ay)} L ${f(bx)} ${f(by)}`, stroke: 0.07, fill: false });
+        paths.push({ d: `M ${f(ax)} ${f(ay)} L ${f(bx)} ${f(by)}`, stroke: 0.06, fill: false });
         if (!corners) {
             const mx = (ax + bx) / 2, my = (ay + by) / 2;
             const qx = mx * 0.5, qy = my * 0.5;
-            paths.push({ d: `M ${f(ax)} ${f(ay)} Q ${f(qx)} ${f(qy)} ${f(bx)} ${f(by)}`, stroke: 0.045, fill: false });
+            paths.push({ d: `M ${f(ax)} ${f(ay)} Q ${f(qx)} ${f(qy)} ${f(bx)} ${f(by)}`, stroke: 0.04, fill: false });
             const px = 0.25 * ax + 0.5 * qx + 0.25 * bx, py = 0.25 * ay + 0.5 * qy + 0.25 * by;
             paths.push({ d: circle(px, py, 0.038), stroke: 0, fill: true });
         }

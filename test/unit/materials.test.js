@@ -8,7 +8,7 @@ const tex = () => new THREE.Texture();
 describe('material recipes', () => {
     it('ships the four metals and four families from the spec', () => {
         expect(Object.keys(METALS)).toEqual(['gold', 'silver', 'bronze', 'iron']);
-        expect(METALS.gold).toEqual({ color: '#D4AF37', roughness: 0.28, metalness: 1, envMapIntensity: 1.2 });
+        expect(METALS.gold).toEqual({ color: '#D4AF37', roughness: 0.28, metalness: 1, envMapIntensity: 1.0 });
         expect(Object.keys(FAMILY_DEFAULTS)).toEqual(['gem', 'glass', 'metal', 'textured']);
         expect(FAMILY_DEFAULTS.textured).toEqual({ roughness: 0.55, metalness: 0, clearcoat: 0, clearcoatRoughness: 0, depthGradient: false });
     });
@@ -19,7 +19,7 @@ describe('material recipes', () => {
         expect(m.color.getHexString()).toBe('d4af37');
         expect(m.roughness).toBe(0.28);
         expect(m.metalness).toBe(1);
-        expect(m.envMapIntensity).toBe(1.2);
+        expect(m.envMapIntensity).toBe(1.0);
         expect(m.flatShading).toBe(true);
         expect(m.map).toBeNull();
     });
