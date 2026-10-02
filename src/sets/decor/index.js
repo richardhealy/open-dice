@@ -2,12 +2,14 @@ import { buildFiligree } from './filigree.js';
 
 export const DECOR_SHAPES = ['tri', 'triCorners', 'square', 'kite', 'pent'];
 
-const SIDES = { tri: 3, triCorners: 3, square: 4, kite: 4, pent: 5 };
+const SIDES = { tri: 3, triCorners: 3, square: 4, pent: 5 };
 
 function forEveryShape(build) {
     const out = {};
     for (const shape of DECOR_SHAPES) {
-        out[shape] = build(SIDES[shape], { corners: shape === 'triCorners' });
+        // A d10/d100 face is the upper triangle of a kite plus a separate coplanar belt
+        // triangle; no face-shaped art fits that split, so kites carry no decoration.
+        out[shape] = shape === 'kite' ? [] : build(SIDES[shape], { corners: shape === 'triCorners' });
     }
     return out;
 }

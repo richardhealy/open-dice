@@ -42,9 +42,9 @@ describe('decor library', () => {
         expect(DECOR_SHAPES).toEqual(['tri', 'triCorners', 'square', 'kite', 'pent']);
         expect(hasDecor('filigree')).toBe(true);
         expect(hasDecor('nope')).toBe(false);
-        for (const shape of DECOR_SHAPES) expect(getDecor('filigree', shape).length).toBeGreaterThan(0);
+        for (const shape of DECOR_SHAPES.filter((s) => s !== 'kite')) expect(getDecor('filigree', shape).length).toBeGreaterThan(0);
         expect(getDecor('filigree', 'square')).toHaveLength(16);
-        expect(getDecor('filigree', 'kite')).toEqual(getDecor('filigree', 'square'));
+        expect(getDecor('filigree', 'kite')).toEqual([]);          // a d10 face is a triangle plus its belt half: no filigree
         expect(getDecor('filigree', 'pent')).toHaveLength(20);
         expect(DECOR.filigree.triCorners).toHaveLength(8);
     });

@@ -5,16 +5,18 @@
  * θ = 2πj / sides + af. Canvas textures flip Y, so canvas y = (1 − v) · ts.
  *
  * shape: which decoration art to use. 'triCorners' is the d4, whose three numerals sit at
- * the corners rather than in the centre.
+ * the corners rather than in the centre. 'kite' is the d10/d100: the textured face is the
+ * upper triangle of a kite whose lower half is a separate coplanar belt triangle, so a
+ * face-shaped decoration cannot fit and the decor library leaves it empty.
  */
 export const FACE_FRAMES = Object.freeze({
     d4:   Object.freeze({ sides: 3, tab: -0.1, af: Math.PI * 7 / 6, shape: 'triCorners' }),
     d6:   Object.freeze({ sides: 4, tab: 0.1,  af: Math.PI / 4,     shape: 'square' }),
     d8:   Object.freeze({ sides: 3, tab: 0,    af: -Math.PI / 8,    shape: 'tri' }),
-    d10:  Object.freeze({ sides: 4, tab: 0,    af: Math.PI * 6 / 5, shape: 'kite' }),
+    d10:  Object.freeze({ sides: 3, tab: 0,    af: Math.PI * 6 / 5, shape: 'kite' }),
     d12:  Object.freeze({ sides: 5, tab: 0.2,  af: -Math.PI / 8,    shape: 'pent' }),
     d20:  Object.freeze({ sides: 3, tab: -0.2, af: -Math.PI / 8,    shape: 'tri' }),
-    d100: Object.freeze({ sides: 4, tab: 0,    af: Math.PI * 6 / 5, shape: 'kite' }),
+    d100: Object.freeze({ sides: 3, tab: 0,    af: Math.PI * 6 / 5, shape: 'kite' }),
 });
 
 /** Circumradius of the face polygon in canvas pixels for a square canvas of size ts. */

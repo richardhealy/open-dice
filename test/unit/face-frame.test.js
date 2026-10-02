@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { makeGeometry } from '../../src/geometry.js';
+import { makeGeometry, D4_GEOMETRY, D6_GEOMETRY, D8_GEOMETRY, D10_GEOMETRY, D12_GEOMETRY, D20_GEOMETRY } from '../../src/geometry.js';
 import { FACE_FRAMES, framePolygon, frameUv, frameRadius, applyFrameTransform } from '../../src/sets/face-frame.js';
 
 function uvsFromMakeGeometry(frame) {
@@ -42,6 +42,17 @@ describe('face frames', () => {
             }
         });
     }
+
+    it('sides come from the real face polygons in geometry.js, not from an assumed shape', () => {
+        const sidesOf = (G) => G.faces[0].length - 1;
+        expect(FACE_FRAMES.d4.sides).toBe(sidesOf(D4_GEOMETRY));
+        expect(FACE_FRAMES.d6.sides).toBe(sidesOf(D6_GEOMETRY));
+        expect(FACE_FRAMES.d8.sides).toBe(sidesOf(D8_GEOMETRY));
+        expect(FACE_FRAMES.d10.sides).toBe(sidesOf(D10_GEOMETRY));      // a d10 "kite" is textured as a triangle
+        expect(FACE_FRAMES.d100.sides).toBe(sidesOf(D10_GEOMETRY));
+        expect(FACE_FRAMES.d12.sides).toBe(sidesOf(D12_GEOMETRY));
+        expect(FACE_FRAMES.d20.sides).toBe(sidesOf(D20_GEOMETRY));
+    });
 
     it('frameRadius is ts / (2 (1 + tab))', () => {
         expect(frameRadius(FACE_FRAMES.d6, 256)).toBeCloseTo(256 / 2.2, 9);

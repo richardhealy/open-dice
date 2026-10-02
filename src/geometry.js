@@ -85,8 +85,18 @@ export const D20_GEOMETRY = (() => {
     return { vertices, faces, faceValues };
 })();
 
+function faceNormal(vectors, face) {
+    const a = vectors[face[0]], b = vectors[face[1]], c = vectors[face[2]];
+    return new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).normalize();
+}
+
 export function getChamferGeometry(vectors, faces, chamfer) {
     let chamfer_vectors = [], chamfer_faces = [], corner_faces = new Array(vectors.length);
+    // Normals of the original faces, used to spot bevels that lie inside one flat face: the
+    // d10's kites are a triangle plus a coplanar belt triangle, and the bevel between them
+    // must not be painted as an edge. Such a bevel takes the larger of the two markers (the
+    // belt's), so it lands on the body material; real edges keep -1 (material index 0).
+    const normals = faces.map((face) => faceNormal(vectors, face));
     for (let i = 0; i < vectors.length; ++i) corner_faces[i] = [];
     for (let i = 0; i < faces.length; ++i) {
         let ii = faces[i], fl = ii.length - 1;
@@ -117,10 +127,12 @@ export function getChamferGeometry(vectors, faces, chamfer) {
                 }
             }
             if (pairs.length !== 4) continue;
+            const coplanar = normals[i].dot(normals[j]) > 0.9999;
+            const marker = coplanar ? Math.max(faces[i][faces[i].length - 1], faces[j][faces[j].length - 1]) : -1;
             chamfer_faces.push([chamfer_faces[pairs[0][0]][pairs[0][1]],
             chamfer_faces[pairs[1][0]][pairs[1][1]],
             chamfer_faces[pairs[3][0]][pairs[3][1]],
-            chamfer_faces[pairs[2][0]][pairs[2][1]], -1]);
+            chamfer_faces[pairs[2][0]][pairs[2][1]], marker]);
         }
     }
     for (let i = 0; i < corner_faces.length; ++i) {
