@@ -25,12 +25,22 @@ export const D8_GEOMETRY = (() => {
     return { vertices, faces, faceValues };
 })();
 
+/**
+ * The ten equatorial "belt" triangles between the d10's kites are not faces. They used to
+ * share material index 0 with the chamfer bevels; dice sets paint index 0 as edge metal,
+ * which turned the belt into large gold triangles. They now carry their own marker so they
+ * land on material index D10_BELT_MATERIAL_INDEX and take the body material. getDieValue
+ * skips that index exactly as it skips index 0.
+ */
+export const D10_BELT_MATERIAL_INDEX = 11;
+
 export const D10_GEOMETRY = (() => {
     const vertices = [];
+    const belt = D10_BELT_MATERIAL_INDEX - 1;
     const faces = [[5, 7, 11, 0], [4, 2, 10, 1], [1, 3, 11, 2], [0, 8, 10, 3], [7, 9, 11, 4],
     [8, 6, 10, 5], [9, 1, 11, 6], [2, 0, 10, 7], [3, 5, 11, 8], [6, 4, 10, 9],
-    [1, 0, 2, -1], [1, 2, 3, -1], [3, 2, 4, -1], [3, 4, 5, -1], [5, 4, 6, -1],
-    [5, 6, 7, -1], [7, 6, 8, -1], [7, 8, 9, -1], [9, 8, 0, -1], [9, 0, 1, -1]];
+    [1, 0, 2, belt], [1, 2, 3, belt], [3, 2, 4, belt], [3, 4, 5, belt], [5, 4, 6, belt],
+    [5, 6, 7, belt], [7, 6, 8, belt], [7, 8, 9, belt], [9, 8, 0, belt], [9, 0, 1, belt]];
 
     for (let i = 0, b = 0; i < 10; ++i, b += Math.PI * 2 / 10) {
         vertices.push([Math.cos(b), Math.sin(b), 0.105 * (i % 2 ? 1 : -1)]);

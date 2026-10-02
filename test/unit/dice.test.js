@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
 import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
 import { clearDiceSetCaches } from '../../src/sets/texture-cache.js';
-import { createDie } from '../../src/dice.js';
+import { createDie, getDieValue } from '../../src/dice.js';
 import { makeRecordingCanvas } from './helpers/canvas-stub.js';
 import { GEM } from './helpers/sets.js';
 
@@ -55,6 +55,31 @@ describe('createDie with dice sets', () => {
         expect(new Set(die.mesh.material).size).toBe(1);
         expect(die.mesh.material[0]).toBeInstanceOf(THREE.MeshBasicMaterial);
         expect(canvases).toHaveLength(0);
+    });
+
+    it('d10 and d100 belt triangles take the body material, not the edge metal', () => {
+        for (const type of ['d10', 'd100']) {
+            const die = createDie(type, true, true, undefined, undefined, null, null, null, null, null, null, false, null, null, { set: GEM });
+            expect(die.mesh.material).toHaveLength(12);
+            expect(die.mesh.material[0].metalness).toBe(1);          // bevels: gold
+            const belt = die.mesh.material[11];
+            expect(belt).toBeInstanceOf(THREE.MeshPhysicalMaterial);
+            expect(belt).not.toBe(die.mesh.material[0]);
+            expect(belt.color.getHexString()).toBe('ffffff');        // a face material (white multiplier), not gold
+            expect(belt.map).toBeInstanceOf(THREE.Texture);          // painted body, which the edge never has
+            // The belt never counts as a face: a settled d10 still reports a kite value.
+            const [value] = getDieValue(die, new THREE.Vector3(0, 1, 0));
+            expect(Number.isNaN(value)).toBe(false);
+        }
+    });
+
+    it('classic d10 keeps a blank background face on the belt', () => {
+        const die = createDie('d10', true, true);
+        expect(die.mesh.material).toHaveLength(12);
+        expect(die.mesh.material[11]).toBeInstanceOf(THREE.MeshPhongMaterial);
+        const belt = die.mesh.material[11].map.image;
+        // Blank classic faces call fillText with '' (as index 0 always has); no numeral is drawn.
+        expect(belt.calls.filter((c) => c.name === 'fillText' && c.args[0] !== '')).toHaveLength(0);
     });
 
     it('the predetermined face still carries the target value on a set die', () => {

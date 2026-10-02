@@ -8,6 +8,7 @@ import { createD10Mesh, createD10Body } from './dice-models/d10.js';
 import { createD12Mesh, createD12Body } from './dice-models/d12.js';
 import { createD20Mesh, createD20Body } from './dice-models/d20.js';
 import { createD100Body, createD100Mesh } from './dice-models/d100.js';
+import { D10_BELT_MATERIAL_INDEX } from './geometry.js';
 
 // Color validation utility
 function isValidHexColor(color) {
@@ -288,7 +289,7 @@ export function getDieValue(die, up, targetNumber, foundClosestIndex) {
         
         for (let i = 0; i < geometry.groups.length; i++) {
             const group = geometry.groups[i];
-            if (group.materialIndex === 0) continue;
+            if (group.materialIndex === 0 || group.materialIndex === D10_BELT_MATERIAL_INDEX) continue;
             const position = geometry.attributes.position;
             const startVertex = group.start;
             const v0 = new THREE.Vector3().fromBufferAttribute(position, startVertex);
@@ -327,7 +328,7 @@ export function getDieValue(die, up, targetNumber, foundClosestIndex) {
         
         for (let i = 0; i < geometry.groups.length; i++) {
             const group = geometry.groups[i];
-            if (group.materialIndex === 0) continue;
+            if (group.materialIndex === 0 || group.materialIndex === D10_BELT_MATERIAL_INDEX) continue;
             const position = geometry.attributes.position;
             const startVertex = group.start;
             const v0 = new THREE.Vector3().fromBufferAttribute(position, startVertex);
