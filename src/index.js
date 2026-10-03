@@ -8,7 +8,7 @@ export { createDie, getDieValue } from './dice.js';
 export { DecalRegistry } from './decal-registry.js';
 export { SoundManager } from './sound-manager.js';
 
-// Dice sets: premium data-defined looks. See README "Dice sets".
+// Dice sets: premium data-defined looks. See README "Dice designs".
 export { registerDiceSet, unregisterDiceSet, listDiceSets, getDiceSet, resolveSet, CLASSIC as CLASSIC_DICE_SET } from './sets/index.js';
 export { clearDiceSetCaches } from './sets/texture-cache.js';
 export { installEnvironment } from './sets/environment.js';

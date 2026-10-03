@@ -18,12 +18,17 @@ describe('design decals are ordinary decal options, keyed by die type', () => {
         expect(set.decals).toEqual({ d20: { '20': { src: 'data:image/svg+xml,a', scale: 0.74 } }, d6: { '6': { src: '/six.svg', offsetX: 0.1, rotation: 45 } } });
         expect(Object.isFrozen(set.decals.d20['20'])).toBe(true);
         expect(validateSet(base).decals).toBeNull();
+        expect(validateSet({ ...base, decals: {} }).decals).toBeNull();               // empty means none
+        expect(validateSet({ ...base, decals: { d20: {} } }).decals).toBeNull();
+        expect(validateSet({ ...base, decals: { d100: { '00': { src: 'x' }, '0': { src: 'y' } } } }).decals.d100['00'].src).toBe('x');
     });
 
     it('rejects unknown die types, bad face values, a missing src and out-of-range options', () => {
         const bad = (decals, field) => expect(() => validateSet({ ...base, decals })).toThrow(new RegExp(`decals\\.${field.replace(/\./g, '\\.')}`));
         bad({ d7: { '1': { src: 'a' } } }, 'd7');
         bad({ d20: { twenty: { src: 'a' } } }, 'd20.twenty');
+        bad({ d20: { '21': { src: 'a' } } }, 'd20.21');                                // a d20 has no 21
+        bad({ d6: { '00': { src: 'a' } } }, 'd6.00');
         bad({ d20: { '20': { scale: 1 } } }, 'd20.20.src');
         bad({ d20: { '20': { src: 'a', scale: 5 } } }, 'd20.20.scale');
         bad({ d20: { '20': { src: 'a', offsetY: 0.9 } } }, 'd20.20.offsetY');

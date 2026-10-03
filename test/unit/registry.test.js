@@ -35,6 +35,10 @@ describe('dice set registry', () => {
         expect(() => registerDiceSet({ ...def('classic') }, { replace: true })).toThrow(/already exists/);
     });
 
+    it('registerDiceSet tolerates null options', () => {
+        expect(registerDiceSet(def('null-opts'), null)).toBe('null-opts');
+    });
+
     it('unregisterDiceSet removes a design and its textures; unknown ids return false', () => {
         clearDiceSetCaches();
         registerDiceSet(def('gone'));

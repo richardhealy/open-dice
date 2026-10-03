@@ -20,7 +20,8 @@ const warned = new Set();
  * case the new definition takes over and that design's cached textures are dropped so the
  * next roll repaints it. The library ships no designs: the host registers its own.
  */
-export function registerDiceSet(definition, { replace = false } = {}) {
+export function registerDiceSet(definition, options) {
+    const replace = !!(options && options.replace);
     const set = validateSet(definition);
     if (set.id === CLASSIC || (registry.has(set.id) && !replace)) {
         throw new Error(`open-dice-dnd: a dice set with id "${set.id}" already exists.`);

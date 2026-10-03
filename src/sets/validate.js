@@ -13,6 +13,12 @@ const IMAGE_FITS = ['cover', 'tile'];
 const MAX_DECOR_LAYERS = 6;
 
 const DECAL_DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
+const range1 = (n) => Array.from({ length: n }, (_, i) => String(i + 1));
+/** The face values each die type shows; a decal keyed on any other value could never paint. */
+const DECAL_FACE_VALUES = {
+    d4: range1(4), d6: range1(6), d8: range1(8), d10: ['0', ...range1(9)], d12: range1(12), d20: range1(20),
+    d100: ['0', ...range1(9), '00', '10', '20', '30', '40', '50', '60', '70', '80', '90'],
+};
 
 /** One decal entry: exactly the library's decal options, keeping only the fields given. */
 function decalOptions(field, d) {
@@ -34,13 +40,15 @@ function decalsSpec(value) {
     for (const [type, byValue] of Object.entries(value)) {
         if (!DECAL_DIE_TYPES.includes(type)) fail(`decals.${type}`, `unknown die type; one of ${DECAL_DIE_TYPES.join(', ')}`);
         if (!byValue || typeof byValue !== 'object' || Array.isArray(byValue)) fail(`decals.${type}`, 'must map face values to decals');
+        const entries = Object.entries(byValue);
+        if (entries.length === 0) continue;
         out[type] = {};
-        for (const [face, decal] of Object.entries(byValue)) {
-            if (!/^\d{1,3}$/.test(face)) fail(`decals.${type}.${face}`, 'face values are numbers such as "20" or "00"');
+        for (const [face, decal] of entries) {
+            if (!DECAL_FACE_VALUES[type].includes(face)) fail(`decals.${type}.${face}`, `a ${type} has no face "${face}"; faces are ${DECAL_FACE_VALUES[type].join(', ')}`);
             out[type][face] = decalOptions(`decals.${type}.${face}`, decal);
         }
     }
-    return out;
+    return Object.keys(out).length ? out : null;
 }
 
 function fail(field, message) {

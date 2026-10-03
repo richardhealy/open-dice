@@ -6,7 +6,7 @@ import { NUMERAL_FONT_DATA } from './numerals-data.js';
  * original font's name. Canvas text falls back through the system families listed here if
  * the FontFace API is missing or a load fails.
  *
- * - `OpenDiceNumerals`: Cinzel Bold, the engraved serif every built-in set used until 1.4.
+ * - `OpenDiceNumerals`: Cinzel Bold, an engraved serif (the default numeral font).
  * - `OpenDiceMono`: Share Tech Mono (a single regular weight), for circuit and console looks.
  */
 export const NUMERAL_FONTS = {

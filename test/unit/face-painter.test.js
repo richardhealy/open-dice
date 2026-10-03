@@ -12,6 +12,7 @@ import { EXAMPLE_DESIGNS } from '../../examples/designs/index.js';
 import { validateSet } from '../../src/sets/validate.js';
 // Regenerate after a DELIBERATE painting change: UPDATE_PAINTER_SNAPSHOT=1 npx vitest run test/unit/face-painter.test.js
 const UPDATE = process.env.UPDATE_PAINTER_SNAPSHOT === '1';
+const SIZE_PINS = { d20: 87, d12: 104, tens: 86, d8: 105 };
 const fresh = { gem: {}, builtins: {} };
 
 const fillTexts = (c) => callsNamed(c, 'fillText').map((x) => x.args[0]);
@@ -147,17 +148,38 @@ describe('face painter', () => {
         expect(callsNamed(mr.canvas, 'strokeText')).toHaveLength(0);
     });
 
-    it('numerals shrink to fit the face: two digits on a d12 pentagon and the d100 tens kite come out smaller than one digit on a d20', () => {
-        const px = (c) => Number(/(\d+(?:\.\d+)?)px/.exec(fontsSet(c).at(-1))[1]);
-        const d20 = paintFace({ set: GEM, type: 'd20', face: { text: '7' }, mode: 'albedo' });
-        const d12 = paintFace({ set: GEM, type: 'd12', face: { text: '10' }, mode: 'albedo' });
-        const tens = paintFace({ set: GEM, type: 'd100', face: { text: '90' }, textOffsetY: 16, mode: 'albedo' });
+    it('numerals shrink to fit the face: pinned die sizes on the stub metrics (single-digit dice keep the design size)', () => {
+        const px = (type, text, extra = {}) => Number(/(\d+(?:\.\d+)?)px/.exec(fontsSet(paintFace({ set: GEM, type, face: { text }, mode: 'albedo', ...extra }).canvas).at(-1))[1]);
         const base = Math.round(256 * 0.445);
-        expect(px(d20.canvas)).toBe(base);                       // fits as is
-        expect(px(d12.canvas)).toBeLessThan(base);
-        expect(px(tens.canvas)).toBeLessThan(base);
-        expect(px(d12.canvas)).toBeGreaterThanOrEqual(base * 0.5);  // never squeezed below half
-        expect(px(tens.canvas)).toBeGreaterThanOrEqual(base * 0.5);
+        expect(px('d6', '4')).toBe(base);                        // a d6 face fits its numerals at the design size
+        // Deterministic on the recording stub (0.62 em digits, 0.36 em half-height): a regression in
+        // the margins, pads or edge orientation moves these numbers.
+        expect(px('d20', '7')).toBe(SIZE_PINS.d20);
+        expect(px('d12', '10')).toBe(SIZE_PINS.d12);
+        expect(px('d100', '90', { textOffsetY: 16 })).toBe(SIZE_PINS.tens);
+        expect(px('d8', '8')).toBe(SIZE_PINS.d8);                // a d8 triangle with a band trims even single digits a little
+        for (const v of Object.values(SIZE_PINS)) {
+            expect(v).toBeLessThan(base);
+            expect(v).toBeGreaterThanOrEqual(Math.round(base * 0.5));   // never squeezed below half
+        }
+    });
+
+    it('one numeral size per die: every face of a die uses the size that fits its widest value', () => {
+        const px = (c) => Number(/(\d+(?:\.\d+)?)px/.exec(fontsSet(c).at(-1))[1]);
+        const sizes = (type, values, extra = {}) => values.map((v) => px(paintFace({ set: GEM, type, face: { text: String(v) }, mode: 'albedo', ...extra }).canvas));
+        const d20 = sizes('d20', [1, 7, 10, 18, 20]);
+        expect(new Set(d20).size).toBe(1);                                         // "7" no larger than "20"
+        expect(d20[0]).toBeLessThan(114);
+        const units = sizes('d100', [0, 6, 9], { textOffsetY: 16 });
+        const tens = sizes('d100', ['00', '60', '90'], { textOffsetY: 16 });
+        expect(new Set(units).size).toBe(1);                                       // the units die: one size
+        expect(new Set(tens).size).toBe(1);                                        // the tens die: one size of its own
+        const d4 = paintFace({ set: GEM, type: 'd4', face: { values: [1, 2, 4] }, mode: 'albedo' }).canvas;
+        // The font active at each drawn numeral (measuring sets fonts too, inside save/restore).
+        const drawnFonts = (c) => { let font = null; const out = []; for (const call of c.calls) { if (call.name === 'set:font') font = call.args[0]; if (call.name === 'fillText') out.push(font); } return out; };
+        expect(new Set(drawnFonts(d4).map((f) => /(\d+)px/.exec(f)[1])).size).toBe(1);
+        const secret = px(paintFace({ set: GEM, type: 'd20', face: { text: '20' }, isSecret: true, mode: 'albedo' }).canvas);
+        expect(secret).toBe(d20[0]);                                               // a secret "?" keeps the die's size
     });
 
     it('fitNumeralSize keeps the glyph box inside the inset face polygon and respects a frame band', () => {
@@ -620,9 +642,9 @@ describe('face painter: layers, emblems, images', () => {
     });
 
     it('the font string comes from fontStack: embedded families gain their fallback, others pass verbatim', () => {
-        expect(fontsSet(paint({ set: CIRCUIT, type: 'd20', face: { text: '7' } }).canvas).at(-1)).toBe('400 114px OpenDiceMono, "Courier New", monospace');
+        expect(fontsSet(paint({ set: CIRCUIT, type: 'd20', face: { text: '7' } }).canvas).at(-1)).toMatch(/^400 \d+px OpenDiceMono, "Courier New", monospace$/);
         const papyrus = { ...GEM, numeral: { ...GEM.numeral, font: 'Papyrus' } };
-        expect(fontsSet(paint({ set: papyrus, type: 'd20', face: { text: '7' } }).canvas).at(-1)).toBe('700 114px Papyrus');
+        expect(fontsSet(paint({ set: papyrus, type: 'd20', face: { text: '7' } }).canvas).at(-1)).toMatch(/^700 \d+px Papyrus$/);
     });
 
     const stable = (k, v) => (typeof v === 'function' ? '<fn>'

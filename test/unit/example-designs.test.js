@@ -3,8 +3,6 @@ import { EXAMPLE_DESIGNS } from '../../examples/designs/index.js';
 import { EXTENT, REACH } from '../../examples/designs/decal-art.js';
 import { listDiceSets, getDiceSet, registerDiceSet, _resetRegistryForTests } from '../../src/sets/index.js';
 import { validateSet } from '../../src/sets/validate.js';
-import { FACE_FRAMES, frameRadius } from '../../src/sets/face-frame.js';
-import { TEXTURE_SIZE, FIT_MARGIN } from '../../src/sets/face-painter.js';
 
 const IDS = [
     'ruby-jewel', 'emerald-jewel', 'sapphire-jewel', 'obsidian-gold', 'ember-dragonhide',
@@ -36,11 +34,8 @@ describe('example designs (registered here the way a host would)', () => {
         }
     });
 
-    it('seven designs mark the d20 "20" with a decal that fits the face; the glowing designs keep the numeral', () => {
+    it('seven designs mark the d20 "20" with a decal (the render harness proves the fit on real pixels); the glowing designs keep the numeral', () => {
         const decorated = ['ruby-jewel', 'emerald-jewel', 'sapphire-jewel', 'obsidian-gold', 'tidepool-pour', 'rosewood-knotwork', 'rose-felt'];
-        const d20 = FACE_FRAMES.d20;
-        const R = frameRadius(d20, TEXTURE_SIZE);
-        const room = R * Math.cos(Math.PI / d20.sides) - R * FIT_MARGIN.band;          // inradius less the band margin
         for (const id of IDS) {
             const set = getDiceSet(id);
             if (!decorated.includes(id)) { expect(set.decals, id).toBeNull(); continue; }
@@ -51,7 +46,6 @@ describe('example designs (registered here the way a host would)', () => {
             // proves the fit on real pixels in Chromium and WebKit. Here: sane bounds only.
             expect(decal.scale, id).toBeGreaterThan(0.5);
             expect(decal.scale, id).toBeLessThanOrEqual(1.4);
-            expect(room).toBeGreaterThan(0);
         }
         for (const [art, r] of Object.entries(REACH)) expect(r, art).toBeLessThanOrEqual(EXTENT);
     });

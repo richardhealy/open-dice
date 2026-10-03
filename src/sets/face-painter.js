@@ -6,7 +6,7 @@ import { pourPixels, circuitMask, feltPixels } from './patterns.js';
 import { heightToNormal } from './normal-map.js';
 import { getDecor } from './decor/index.js';
 import { getEmblem } from './decor/emblems.js';
-import { fontStack } from './fonts/numerals.js';
+import { fontStack, isNumeralFontReady } from './fonts/numerals.js';
 import { drawDecalImage, drawD4CornerDecal, isUnderlined } from '../face-texture.js';
 import { hexToRgb, rgbToHex, shade, mrColor, scaleColor } from './color.js';
 
@@ -214,6 +214,7 @@ export function clearPatternCacheFor(id) {
 }
 
 export function clearPatternCache() {
+    dieSizeCache = new WeakMap();
     patternCache.clear();
     imageFills = new WeakMap();
 }
@@ -489,15 +490,56 @@ export function fitNumeralSize({ ctx, text, set, type, basePx, x, y, ts, corner 
     const box = [[-left - pad, -ascent - pad], [right + pad, -ascent - pad], [right + pad, descent + pad], [-left - pad, descent + pad]];
     const margin = frameRadius(frame, ts) * (corner ? FIT_MARGIN.corner : hasBandOn(set, type) ? FIT_MARGIN.band : FIT_MARGIN.plain);
     let scale = 1;
+    const tooBig = () => warnOnce(`fit:${set.id}:${type}`, `open-dice-dnd: design "${set.id}" numerals cannot fit a ${type} face even at half size; reduce numeral.scale or the outline.`);
     for (const { n, h } of frameEdges(frame, ts)) {
         const room = h - margin - (n[0] * x + n[1] * y);
-        if (room <= 0) return basePx * MIN_FIT;
+        if (room <= 0) { tooBig(); return basePx * MIN_FIT; }
         for (const [bx, by] of box) {
             const reach = n[0] * bx + n[1] * by;
             if (reach > 0) scale = Math.min(scale, room / reach);
         }
     }
+    if (scale < MIN_FIT) tooBig();
     return basePx * Math.max(MIN_FIT, Math.min(1, scale));
+}
+
+/**
+ * The values a die of `type` shows, so its numerals can share one size. The d100 pair is two
+ * dice: the units die (0-9) and the tens die (00-90); a two-character face is the tens die.
+ */
+function dieValues(type, text) {
+    switch (type) {
+        case 'd4': return ['1', '2', '3', '4'];
+        case 'd6': return ['1', '2', '3', '4', '5', '6'];
+        case 'd8': return ['1', '2', '3', '4', '5', '6', '7', '8'];
+        case 'd10': return ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        case 'd12': return Array.from({ length: 12 }, (_, i) => String(i + 1));
+        case 'd20': return Array.from({ length: 20 }, (_, i) => String(i + 1));
+        case 'd100': return String(text).length >= 2
+            ? ['00', '10', '20', '30', '40', '50', '60', '70', '80', '90']
+            : ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        default: return [String(text)];
+    }
+}
+
+/** Per design definition (a replaced definition is a new object), per die and anchor. */
+let dieSizeCache = new WeakMap();
+
+/**
+ * One numeral size for a whole die: the smallest of the sizes at which each of its values fits.
+ * Real dice, and classic ones, use a single size per die; fitting glyph by glyph had a d20's
+ * "20" at 71 % beside its "7" at 100 %. A secret "?" uses the die's size too.
+ */
+export function fitDieNumeralSize({ ctx, text, set, type, basePx, x, y, ts, corner = false }) {
+    const values = dieValues(type, text === '?' ? '0' : text);
+    const key = `${type}|${values.length}|${values[0]}|${basePx}|${x}|${y}|${ts}|${corner ? 1 : 0}|${isNumeralFontReady() ? 1 : 0}`;
+    let perSet = dieSizeCache.get(set);
+    if (!perSet) { perSet = new Map(); dieSizeCache.set(set, perSet); }
+    if (perSet.has(key)) return perSet.get(key);
+    let size = basePx;
+    for (const v of values) size = Math.min(size, fitNumeralSize({ ctx, text: v, set, type, basePx, x, y, ts, corner }));
+    perSet.set(key, size);
+    return size;
 }
 
 function drawUnderline(ctx, text, x, y, sizePx, colour) {
@@ -522,7 +564,7 @@ export function paintNumeral(ctx, text, { x, y, sizePx, set, mode, intensity, fi
     if (mode === 'height') return;
     if (mode === 'mr' && style !== 'inlay') return;
     if (mode === 'emissive' && style !== 'glow') return;
-    if (fit) sizePx = fitNumeralSize({ ctx, text, set, type: fit.type, basePx: sizePx, x, y, ts: fit.ts, corner: fit.corner });
+    if (fit) sizePx = fitDieNumeralSize({ ctx, text, set, type: fit.type, basePx: sizePx, x, y, ts: fit.ts, corner: fit.corner });
     ctx.save();
     ctx.font = fontString(set, sizePx);
     ctx.textAlign = 'center';

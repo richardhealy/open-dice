@@ -3,9 +3,10 @@ import * as THREE from 'three';
 // missing export is a link-time error.
 import * as lib from '../../src/index.js';
 import { EXAMPLE_DESIGNS } from '../../examples/designs/index.js';
-import { paintNumeral, fitNumeralSize, TEXTURE_SIZE, NUMERAL_SIZE, CORNER_SIZE, CORNER_OFFSET, FIT_MARGIN } from '../../src/sets/face-painter.js';
+import { paintNumeral, fitDieNumeralSize, TEXTURE_SIZE, NUMERAL_SIZE, CORNER_SIZE, CORNER_OFFSET, FIT_MARGIN } from '../../src/sets/face-painter.js';
 import { FACE_FRAMES, frameEdges, frameRadius } from '../../src/sets/face-frame.js';
 import { drawDecalImage } from '../../src/face-texture.js';
+import { D100_TEXT_OFFSET_Y } from '../../src/dice-models/d100.js';
 
 const { DiceRoller, createDie, registerDiceSet } = lib;
 const SIZE = 320;
@@ -198,14 +199,15 @@ window.__fitProbe = async ({ fit: useFit = true } = {}) => {
             for (const value of PROBE_VALUES[type]) {
                 const corner = type === 'd4';
                 const text = String(value);
-                const x = ts / 2, y = corner ? ts / 2 - ts * CORNER_OFFSET : ts / 2 + (type === 'd100' ? 16 : 0);
+                const x = ts / 2, y = corner ? ts / 2 - ts * CORNER_OFFSET : ts / 2 + (type === 'd100' ? D100_TEXT_OFFSET_Y : 0);
                 const basePx = ts * (corner ? CORNER_SIZE : NUMERAL_SIZE) * set.numeral.scale;
                 const canvas = document.createElement('canvas');
                 canvas.width = canvas.height = ts;
                 const ctx = canvas.getContext('2d');
                 paintNumeral(ctx, text, { x, y, sizePx: basePx, set, mode: 'albedo', fit: useFit ? { type, ts, corner } : null });
-                const fitted = fitNumeralSize({ ctx, text, set, type, basePx, x, y, ts, corner });
-                glyphs.push({ id, type, text, ratio: fitted / basePx, ...inkOutside(canvas, edges) });
+                const fitted = fitDieNumeralSize({ ctx, text, set, type, basePx, x, y, ts, corner });
+                const half = type === 'd100' ? (text.length >= 2 ? 'tens' : 'units') : '';
+                glyphs.push({ id, type, half, text, ratio: fitted / basePx, ...inkOutside(canvas, edges) });
             }
         }
         const decal = set.decals && set.decals.d20 && set.decals.d20['20'];

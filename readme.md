@@ -68,6 +68,7 @@ new DiceRoller({
     sounds,              // string[] of audio URLs (collision sfx)
     soundVolume,         // number 0..1, default 1
     effects,             // rule list — see "Settled Effects"
+    set,                 // default design id for every die (see Dice designs); omit for classic
     pixelRatio,          // number, default min(devicePixelRatio, 2); pass 1 to opt out
 })
 ```
@@ -83,6 +84,8 @@ new DiceRoller({
 | `isRolling()` | `boolean` | True if any batch is still unresolved |
 | `setEffectRules(rules)` | `void` | Replace settled-effect rules at runtime |
 | `preloadDecals(srcs)` | `Promise` | Cache decal images before first roll |
+| `preloadSets(ids)` | `Promise<void>` | Load fonts, reflections, images and decals of these designs and paint their faces ahead of the first roll |
+| `setDefaultSet(id)` | `void` | Default design for later rolls; `null` returns to classic |
 | `setThrowSpeed(n)` | `void` | |
 | `setThrowSpin(n)` | `void` | |
 | `destroy()` | `void` | Tear down WebGL, listeners, physics |
@@ -99,6 +102,7 @@ Each entry in the `diceConfig` array passed to `roll()` / `addDice()`:
     textColor: '#ffffff',        // optional hex string — face text color
     backgroundColor: '#4ecdc4',  // optional hex string — face background color
     isSecret: false,             // optional — replace numbers with '?'
+    set: 'ruby-jewel',           // optional — a registered design id (overrides the roller's default)
     decals: {                    // optional — see Decals section
         '1': { src: '/sword.svg', scale: 0.7 },
     },
@@ -174,7 +178,7 @@ await roller.roll([
     { dice: 'd8',  rolled: 2, set: 'classic', diceColor: 0x4ade80 }, // classic honours colours
 ]);
 
-registerDiceSet(updatedDesign, { replace: true });                  // swap a definition; its textures repaint
+registerDiceSet(updatedDesign, { replace: true });                  // swap a definition; the next roll paints it
 unregisterDiceSet('ruby-jewel');                                     // withdraw one
 listDiceSets();                                                      // [{ id, name, family, swatch }] for a picker
 roller.setDefaultSet(null);                                          // back to classic for later rolls
@@ -182,12 +186,21 @@ roller.setDefaultSet(null);                                          // back to 
 
 Rules:
 
-- Designs ignore `diceColor`, `textColor` and `backgroundColor`: the palette is the design. `classic` honours them, so "standard dice in my colours" is simply `set: 'classic'` (or no set at all).
+- Designs ignore `diceColor`, `textColor` and `backgroundColor`: the palette is the design. `classic` honours them, so "standard dice in my colours" is `set: 'classic'` on the die (or no set at all when the roller has no default design: a die without `set` takes the roller's default).
 - An unknown design id logs one warning and renders `classic`, so a spectator without that design registered, or a stale id, can never break a roll.
 - `registerDiceSet` validates the definition and throws naming the failing field. `classic` is reserved, and an id already registered throws unless you pass `{ replace: true }`.
 - Per-die `decals` and `isSecret` work with every design.
-- The first roll with a design waits a few milliseconds for the numeral fonts and the reflection map; `preloadSets()` moves that cost to page load. To draw with `createDie(type, ..., { set })` without a roller (a picker preview, say), first await `prepareDiceSets({ renderer, scene, decalRegistry, sets })`.
-- **Numerals fit their faces.** A design's numeral shrinks, never below half its size, until its ink clears the face edge and any decoration band. Two-digit faces (the d100 tens, a d12's 10 to 12, a d20's 10 to 20) and wide serif digits therefore stay inside their faces. Classic dice are unchanged.
+- The first roll with a design waits a few milliseconds for the numeral fonts and the reflection map; `preloadSets()` moves that cost to page load.
+- To draw a design without a roller (a picker preview, say), prepare it, then pass the same `DecalRegistry` to `createDie` so the design's decals and images paint:
+
+  ```js
+  const registry = new DecalRegistry();
+  await prepareDiceSets({ renderer, scene, decalRegistry: registry, sets: ['ruby-jewel'] });
+  // createDie(type, visible, isFirst, rolled, faceIndex, physicsMaterial, scene, world,
+  //           diceColor, textColor, backgroundColor, isSecret, decals, decalRegistry, options)
+  const die = createDie('d20', true, true, 20, upFaceIndex, null, scene, null, null, null, null, false, null, registry, { set: 'ruby-jewel' });
+  ```
+- **Numerals fit their faces, one size per die.** A design's numerals shrink, never below half their size, until the widest value of that die clears the face edge and any decoration band; every face of the die then uses that size, as on real dice. Two-digit faces (the d100 tens, a d12's 10 to 12, a d20's 10 to 20) and wide serif digits therefore stay inside their faces. A design whose numerals cannot fit even at half size logs one warning. Classic dice are unchanged.
 
 ### A minimal design
 
@@ -237,7 +250,7 @@ decals: {
 }
 ```
 
-They travel through the same pipeline as per-die decals. The roller's `DecalRegistry` loads them, and `preloadSets()` includes them. They replace the numeral on that face, and secret rolls hide them. Keying by die type keeps a d20's "20" mark off the d100's tens face. A die's own `decals` option overrides the design's decal for the same value, and `null` switches it off:
+Design decals are validated when the design is registered: `src` is required, `scale` is 0.1 to 2, `offsetX` and `offsetY` are -0.5 to 0.5, `rotation` is -360 to 360 degrees, and the face value must exist on that die (a d20 has no "21"); an empty `decals` is treated as none. They travel through the same pipeline as per-die decals. The roller's `DecalRegistry` loads them, and `preloadSets()` includes them. They replace the numeral on that face, and secret rolls hide them. Keying by die type keeps a d20's "20" mark off the d100's tens face. A die's own `decals` option overrides the design's decal for the same value, and `null` switches it off:
 
 ```js
 await roller.roll([{ dice: 'd20', rolled: 20, set: 'ruby-jewel', decals: { '20': null } }]);   // the numeral, not the crown
