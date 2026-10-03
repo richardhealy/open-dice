@@ -1,3 +1,5 @@
+import { sunburst, svgDataUrl } from './decal-art.js';
+
 /**
  * Rosewood grain: a low-warp pour through dark brown, red-brown and amber under a gold
  * knotwork braid, with engraved cream numerals, gold edges and a gold sunburst on the 20.
@@ -20,6 +22,7 @@ export default {
     edge: { metal: 'gold' },
     numeral: { color: '#F3E3C3', style: 'engraved' },
     decor: { art: 'knotwork', metal: 'gold', relief: 0.6 },
-    emblems: { '20': { art: 'sunburst', metal: 'gold', scale: 0.9 } },
+    // The "20" carries a mark instead of its numeral, as an ordinary decal (any host can override it).
+    decals: { d20: { '20': { src: svgDataUrl(sunburst()), scale: 0.78 } } },
     swatch: ['#6B2A1E', '#D4AF37'],
 };

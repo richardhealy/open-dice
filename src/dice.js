@@ -9,6 +9,8 @@ import { createD12Mesh, createD12Body } from './dice-models/d12.js';
 import { createD20Mesh, createD20Body } from './dice-models/d20.js';
 import { createD100Body, createD100Mesh } from './dice-models/d100.js';
 import { D10_BELT_MATERIAL_INDEX } from './geometry.js';
+import { resolveSet } from './sets/index.js';
+import { setDecalsFor } from './sets/decals.js';
 
 // Color validation utility
 function isValidHexColor(color) {
@@ -30,6 +32,8 @@ export function createDie(type, visible = true, isFirst = true, targetNumber, fo
     // Dice set (id or resolved definition) and whether the mesh will ever be rendered. Hidden
     // prediction dice get placeholder materials instead of painted textures.
     const meshOptions = { set: options.set, visible };
+    // A design's own decals (its d20 "20" mark, say) join the die's decals; the die's own win.
+    if (options.set) decals = setDecalsFor(resolveSet(options.set), type, decals);
     
     // Default colors for each die type
     const defaultColors = {

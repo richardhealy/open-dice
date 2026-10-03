@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { listDiceSets, getDiceSet } from '../../src/sets/index.js';
+import { EXAMPLE_DESIGNS } from '../../examples/designs/index.js';
+import { validateSet } from '../../src/sets/validate.js';
 import { hexToRgb, shade, BODY_EXPOSURE } from '../../src/sets/face-painter.js';
 import { METALS } from '../../src/sets/materials.js';
 
@@ -16,11 +17,11 @@ function contrast(a, b) {
     return (hi + 0.05) / (lo + 0.05);
 }
 
-describe('numerals stay readable on every built-in set', () => {
+describe('numerals stay readable on every example design', () => {
     it('numeral colour vs the painted body colour has at least 3:1 contrast', () => {
-        for (const { id } of listDiceSets()) {
-            if (id === 'classic') continue;
-            const set = getDiceSet(id);
+        for (const def of EXAMPLE_DESIGNS) {
+            const set = validateSet(def);
+            const id = set.id;
             const body = shade(set.body.color, BODY_EXPOSURE);                 // what the albedo is actually painted with
             const numeral = set.numeral.style === 'inlay' ? METALS[set.numeral.metal].color
                 : set.numeral.style === 'glow' ? set.numeral.glow.color

@@ -1,4 +1,9 @@
-import { DiceRoller, effects, presets, listDiceSets } from '../src/index.js';
+import { DiceRoller, effects, presets, listDiceSets, registerDiceSet } from '../src/index.js';
+import { EXAMPLE_DESIGNS } from '../examples/designs/index.js';
+
+// The library ships no designs. The demo plays the host: it registers the example designs,
+// exactly as RollQuest registers the designs from its marketplace.
+for (const def of EXAMPLE_DESIGNS) registerDiceSet(def);
 
 const container = document.getElementById('scene-container');
 const resultsContainer = document.getElementById('results-container');

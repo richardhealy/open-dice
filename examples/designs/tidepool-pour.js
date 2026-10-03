@@ -1,3 +1,5 @@
+import { scallop, svgDataUrl } from './decal-art.js';
+
 /**
  * Poured paint in navy, cream, gold and rust, laced with cream and seeded per face so no two
  * faces share a swirl; a gold frame and engraved gold numerals finish it.
@@ -27,5 +29,7 @@ export default {
     edge: { metal: 'gold' },
     numeral: { color: '#D4AF37', style: 'engraved', scale: 1.1, outline: { color: '#1B2B4A', width: 0.1 } },
     decor: { art: 'frame', metal: 'gold', relief: 0.5 },
+    // The "20" carries a mark instead of its numeral, as an ordinary decal (any host can override it).
+    decals: { d20: { '20': { src: svgDataUrl(scallop('#1B2B4A')), scale: 0.86 } } },
     swatch: ['#2F5BA8', '#EEE4D2', '#D4AF37'],
 };

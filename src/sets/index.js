@@ -1,5 +1,5 @@
 import { validateSet } from './validate.js';
-import { BUILTIN_SETS } from './builtin/index.js';
+import { evictSetTextures } from './texture-cache.js';
 
 export const CLASSIC = 'classic';
 
@@ -14,14 +14,29 @@ export const CLASSIC_SET = Object.freeze({
 const registry = new Map();
 const warned = new Set();
 
-/** Validate and register a set. Returns its id. Throws on an invalid or duplicate definition. */
-export function registerDiceSet(definition) {
+/**
+ * Validate and register a design. Returns its id. Throws on an invalid definition, on the
+ * reserved id 'classic', and on an id already registered unless `replace` is true, in which
+ * case the new definition takes over and that design's cached textures are dropped so the
+ * next roll repaints it. The library ships no designs: the host registers its own.
+ */
+export function registerDiceSet(definition, { replace = false } = {}) {
     const set = validateSet(definition);
-    if (set.id === CLASSIC || registry.has(set.id)) {
+    if (set.id === CLASSIC || (registry.has(set.id) && !replace)) {
         throw new Error(`open-dice-dnd: a dice set with id "${set.id}" already exists.`);
     }
+    if (registry.has(set.id)) evictSetTextures(set.id);
     registry.set(set.id, set);
+    warned.delete(set.id);
     return set.id;
+}
+
+/** Remove a registered design and its cached textures. Returns whether it was registered. */
+export function unregisterDiceSet(id) {
+    if (!registry.has(id)) return false;
+    registry.delete(id);
+    evictSetTextures(id);
+    return true;
 }
 
 export function getDiceSet(id) {
@@ -50,15 +65,8 @@ export function resolveSet(idOrSet) {
     return CLASSIC_SET;
 }
 
-function registerBuiltins() {
-    for (const def of BUILTIN_SETS) registerDiceSet(def);
-}
-
-/** Tests only: drop every registered set and re-register the built-ins. */
+/** Tests only: drop every registered design (classic always remains). */
 export function _resetRegistryForTests() {
     registry.clear();
     warned.clear();
-    registerBuiltins();
 }
-
-registerBuiltins();

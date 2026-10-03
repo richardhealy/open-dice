@@ -8,7 +8,8 @@ export function makeRecordingCanvas(size) {
   const calls = [];
   const state = {};
   const returning = {
-    measureText: (text) => ({ width: String(text).length * 10 }),
+    // Width follows the font size set on the context (digits about 0.62 em wide), so fitting logic is testable.
+    measureText: (text) => { const m = /(\d+(?:\.\d+)?)px/.exec(state.font || ''); const px = m ? Number(m[1]) : 16; return { width: String(text).length * 0.62 * px }; },
     getImageData: (x, y, w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
     createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
     createRadialGradient: () => ({ addColorStop() {} }),

@@ -3,7 +3,7 @@
  * wrapping canvases; sharing one across meshes and renderers is safe (each renderer
  * uploads its own copy). Keyed by set id, die type, map kind and the face description.
  */
-import { clearPatternCache } from './face-painter.js';
+import { clearPatternCache, clearPatternCacheFor } from './face-painter.js';
 
 const cache = new Map();
 let anisotropy = 1;
@@ -37,6 +37,16 @@ export function clearDiceSetCaches() {
     }
     cache.clear();
     clearPatternCache();
+}
+
+/** Dispose and forget every cached texture of one set, so a replaced definition repaints. */
+export function evictSetTextures(id) {
+    for (const [key, texture] of [...cache.entries()]) {
+        if (!key.startsWith(`${id}|`)) continue;
+        if (texture && typeof texture.dispose === 'function') texture.dispose();
+        cache.delete(key);
+    }
+    clearPatternCacheFor(id);
 }
 
 export function cacheSize() {

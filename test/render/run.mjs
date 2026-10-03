@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from '@playwright/test';
+import { chromium, webkit } from '@playwright/test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../..');
@@ -149,6 +149,34 @@ try {
         console.log(`${ok ? 'PASS' : 'FAIL'} pixel ratio 2: drawing buffer ${buffer[0]}x${buffer[1]} for a ${buffer[2]}px canvas (needs 640x640)`);
         if (!ok) failures++;
         await hidpi.close();
+    }
+
+    // Numeral and decal fit, exhaustively, in Chromium and in WebKit (Safari's engine). Every
+    // numeral of every registered design on every die type and value must keep its ink inside
+    // the face; every d20 decal must stay clear of the edge band.
+    const probeIn = async (label, pg) => {
+        const { glyphs, decals } = await pg.evaluate(() => window.__fitProbe());
+        const over = glyphs.filter((g) => g.outside > 0);
+        const smallest = glyphs.reduce((m, g) => Math.min(m, g.ratio), 1);
+        const ok = over.length === 0 && glyphs.length > 0;
+        console.log(`${ok ? 'PASS' : 'FAIL'} numeral fit (${label}): ${glyphs.length} numerals across ${new Set(glyphs.map((g) => g.id)).size} designs, ${over.length} with ink outside their face; smallest at ${(smallest * 100).toFixed(0)}% of design size`);
+        for (const g of over.slice(0, 15)) console.log(`  ${g.id} ${g.type} "${g.text}": ${g.outside} px outside (fitted at ${(g.ratio * 100).toFixed(0)}%)`);
+        if (!ok) failures++;
+        const badDecals = decals.filter((d) => d.outside > 0);
+        const dok = badDecals.length === 0 && decals.length > 0;
+        console.log(`${dok ? 'PASS' : 'FAIL'} d20 decal fit (${label}): ${decals.length} decals, ${badDecals.length} reaching into the edge band`);
+        for (const d of badDecals) console.log(`  ${d.id}: ${d.outside} px`);
+        if (!dok) failures++;
+    };
+    await probeIn('chromium', page);
+    {
+        const wk = await webkit.launch({ headless: true });
+        const wpage = await wk.newPage({ viewport: { width: 400, height: 400 } });
+        wpage.on('pageerror', (e) => errors.push(`webkit pageerror: ${e.message}`));
+        await wpage.goto(`http://localhost:${PORT}/`);
+        await wpage.waitForFunction(() => window.__ready === true, null, { timeout: 30000 });
+        await probeIn('webkit', wpage);
+        await wk.close();
     }
 
     if (errors.length) {

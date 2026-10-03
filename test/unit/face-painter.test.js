@@ -1,15 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createHash } from 'node:crypto';
 import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
-import {
-    paintFace, paintNormalMap, shade, mrColor, hexToRgb, scaleColor, faceEmblem, materialEmissiveIntensity,
-    TEXTURE_SIZE, BODY_EXPOSURE, NUMERAL_SIZE, CORNER_SIZE, CORNER_OFFSET, _clearPatternCacheForTests,
-} from '../../src/sets/face-painter.js';
+import { paintFace, paintNormalMap, shade, mrColor, hexToRgb, scaleColor, faceEmblem, materialEmissiveIntensity, TEXTURE_SIZE, BODY_EXPOSURE, NUMERAL_SIZE, CORNER_SIZE, CORNER_OFFSET, _clearPatternCacheForTests, fitNumeralSize } from '../../src/sets/face-painter.js';
 import { getEmblem } from '../../src/sets/decor/emblems.js';
 import { getDiceSet } from '../../src/sets/index.js';
 import { makeRecordingCanvas, callsNamed } from './helpers/canvas-stub.js';
 import { GEM, INLAY, GLOW, NO_EDGE, POUR, CIRCUIT, VINES, EMBLEM, IMAGE, BODY_IMAGE_SRC, DECOR_IMAGE_SRC } from './helpers/sets.js';
-import SNAPSHOT from './helpers/painter-calls-1.4.0.json';
+import SNAPSHOT from './helpers/painter-calls.json';
+import { writeFileSync } from 'node:fs';
+import { EXAMPLE_DESIGNS } from '../../examples/designs/index.js';
+import { validateSet } from '../../src/sets/validate.js';
+// Regenerate after a DELIBERATE painting change: UPDATE_PAINTER_SNAPSHOT=1 npx vitest run test/unit/face-painter.test.js
+const UPDATE = process.env.UPDATE_PAINTER_SNAPSHOT === '1';
+const fresh = { gem: {}, builtins: {} };
 
 const fillTexts = (c) => callsNamed(c, 'fillText').map((x) => x.args[0]);
 const fontsSet = (c) => callsNamed(c, 'set:font').map((x) => x.args[0]);
@@ -55,7 +58,11 @@ describe('face painter', () => {
         expect(callsNamed(canvas, 'rotate')[0].args[0]).toBeCloseTo(-Math.PI / 8, 9);
         expect(callsNamed(canvas, 'stroke').length).toBe(12);                       // 6 bands + 6 inner lines
         expect(callsNamed(canvas, 'fill').length).toBe(6);                          // berries + knots
-        expect(fontsSet(canvas).at(-1)).toBe('700 114px OpenDiceNumerals, Georgia, "Times New Roman", serif');
+        // A two-digit "20" is fitted to the d20 face: never larger than the design size, never under half of it.
+        const px = Number(/(\d+)px/.exec(fontsSet(canvas).at(-1))[1]);
+        expect(px).toBeLessThanOrEqual(114);
+        expect(px).toBeGreaterThanOrEqual(57);
+        expect(fontsSet(canvas).at(-1)).toMatch(/^700 \d+px OpenDiceNumerals, Georgia, "Times New Roman", serif$/);
         expect(fillTexts(canvas)).toEqual(['20', '20', '20']);                      // engraved = light, dark, face
         const last = callsNamed(canvas, 'fillText').at(-1).args;
         expect(last).toEqual(['20', 128, 128]);
@@ -118,7 +125,11 @@ describe('face painter', () => {
         const thirds = callsNamed(canvas, 'rotate').filter((r) => Math.abs(r.args[0] - (Math.PI * 2) / 3) < 1e-9);
         expect(thirds).toHaveLength(3);
         expect(callsNamed(canvas, 'fillText')[2].args.slice(1)).toEqual([128, 128 - 256 * 0.3]);
-        expect(fontsSet(canvas).at(-1)).toBe('700 68px OpenDiceNumerals, Georgia, "Times New Roman", serif');
+        // Corner numerals fit the narrow corner of the face: at most the design size, never under half of it.
+        const cornerPx = Number(/(\d+)px/.exec(fontsSet(canvas).at(-1))[1]);
+        expect(cornerPx).toBeLessThanOrEqual(68);
+        expect(cornerPx).toBeGreaterThanOrEqual(34);
+        expect(fontsSet(canvas).at(-1)).toMatch(/^700 \d+px OpenDiceNumerals, Georgia, "Times New Roman", serif$/);
     });
 
     it('a numeral outline is stroked under the glyph in albedo mode only, scaled to the glyph size', () => {
@@ -134,6 +145,30 @@ describe('face painter', () => {
         expect(callsNamed(canvas, 'set:strokeStyle').map((c) => c.args[0])).toContain('#1B2B4A');
         const mr = paintFace({ set: { ...INLAY, numeral: { ...INLAY.numeral, outline: { color: '#000000', width: 0.1 } } }, type: 'd6', face: { text: '4' }, mode: 'mr' });
         expect(callsNamed(mr.canvas, 'strokeText')).toHaveLength(0);
+    });
+
+    it('numerals shrink to fit the face: two digits on a d12 pentagon and the d100 tens kite come out smaller than one digit on a d20', () => {
+        const px = (c) => Number(/(\d+(?:\.\d+)?)px/.exec(fontsSet(c).at(-1))[1]);
+        const d20 = paintFace({ set: GEM, type: 'd20', face: { text: '7' }, mode: 'albedo' });
+        const d12 = paintFace({ set: GEM, type: 'd12', face: { text: '10' }, mode: 'albedo' });
+        const tens = paintFace({ set: GEM, type: 'd100', face: { text: '90' }, textOffsetY: 16, mode: 'albedo' });
+        const base = Math.round(256 * 0.445);
+        expect(px(d20.canvas)).toBe(base);                       // fits as is
+        expect(px(d12.canvas)).toBeLessThan(base);
+        expect(px(tens.canvas)).toBeLessThan(base);
+        expect(px(d12.canvas)).toBeGreaterThanOrEqual(base * 0.5);  // never squeezed below half
+        expect(px(tens.canvas)).toBeGreaterThanOrEqual(base * 0.5);
+    });
+
+    it('fitNumeralSize keeps the glyph box inside the inset face polygon and respects a frame band', () => {
+        const ctx = makeRecordingCanvas(256).getContext('2d');
+        const framed = { ...GEM, decor: [{ art: 'frame', image: null, metal: 'gold', color: null, relief: 0.5, scale: 1, glow: 0 }] };
+        const plain = { ...GEM, decor: null };
+        const wide = fitNumeralSize({ ctx, text: '20', set: plain, type: 'd12', basePx: 114, x: 128, y: 128, ts: 256 });
+        const framedSize = fitNumeralSize({ ctx, text: '20', set: framed, type: 'd12', basePx: 114, x: 128, y: 128, ts: 256 });
+        expect(wide).toBeLessThan(114);
+        expect(framedSize).toBeLessThan(wide);                    // a frame band leaves less room
+        expect(fitNumeralSize({ ctx, text: '7', set: plain, type: 'd20', basePx: 114, x: 128, y: 128, ts: 256 })).toBe(114);
     });
 
     it('d100 faces honour textOffsetY', () => {
@@ -452,10 +487,6 @@ describe('face painter: layers, emblems, images', () => {
         }
         // A d10 is read on its own and keeps its emblems.
         expect(fillTexts(paint({ set: EMBLEM, type: 'd10', face: { text: '1' } }).canvas)).toEqual([]);
-        // The shipped Rosewood Knotwork: "20" on the tens die reads as 20; the sunburst stays on the d20.
-        const rosewood = getDiceSet('rosewood-knotwork');
-        expect(fillTexts(paint({ set: rosewood, type: 'd100', face: { text: '20' } }).canvas)).toEqual(['20', '20', '20']);
-        expect(fillTexts(paint({ set: rosewood, type: 'd20', face: { text: '20' } }).canvas)).toEqual([]);
     });
 
     it('paintNormalMap takes a loaded image layer\'s alpha as relief when given the registry (final review)', () => {
@@ -606,9 +637,13 @@ describe('face painter: layers, emblems, images', () => {
 
     it('a 1.4.0 gem paints the very same call sequence as before this change, in every map (Review Focus 1)', () => {
         for (const mode of ['albedo', 'mr', 'emissive', 'height', 'normal']) {
-            expect(record(GEM, 'd20', { text: '20' }, mode), mode).toEqual(SNAPSHOT.gem[mode]);
+            const calls = record(GEM, 'd20', { text: '20' }, mode);
+            if (UPDATE) fresh.gem[mode] = calls;
+            else expect(calls, mode).toEqual(SNAPSHOT.gem[mode]);
         }
-        expect(record(GEM, 'd4', { values: [2, 4, 3] }, 'albedo')).toEqual(SNAPSHOT.gem['d4-albedo']);
+        const d4 = record(GEM, 'd4', { values: [2, 4, 3] }, 'albedo');
+        if (UPDATE) fresh.gem['d4-albedo'] = d4;
+        else expect(d4).toEqual(SNAPSHOT.gem['d4-albedo']);
     });
 
     it('a hand-built 1.4.0 set without the new fields paints exactly like its 1.5.0 twin', () => {
@@ -621,16 +656,26 @@ describe('face painter: layers, emblems, images', () => {
         delete legacy.body.texture.perFace;
         legacy.decor = [{ art: 'filigree', metal: 'gold', relief: 0.6 }];
         for (const mode of ['albedo', 'mr', 'emissive', 'height', 'normal']) {
-            expect(record(legacy, 'd20', { text: '20' }, mode), mode).toEqual(SNAPSHOT.gem[mode]);
+            expect(record(legacy, 'd20', { text: '20' }, mode), mode).toEqual(UPDATE ? fresh.gem[mode] : SNAPSHOT.gem[mode]);
         }
     });
 
-    it('every built-in set paints the same calls as before this change for every die type and map', () => {
-        for (const [key, hash] of Object.entries(SNAPSHOT.builtins)) {
+    it('every example design paints the recorded calls for every die type and map', () => {
+        const designs = Object.fromEntries(EXAMPLE_DESIGNS.map((def) => [def.id, validateSet(def)]));
+        const keys = [];
+        for (const id of Object.keys(designs)) {
+            for (const type of ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100']) {
+                for (const mode of ['albedo', 'mr', 'emissive']) keys.push(`${id}|${type}|${mode}`);
+            }
+        }
+        if (!UPDATE) expect(Object.keys(SNAPSHOT.builtins).sort()).toEqual([...keys].sort());
+        for (const key of keys) {
             const [id, type, mode] = key.split('|');
             const face = type === 'd4' ? { values: [1, 2, 3] } : { text: type === 'd100' ? '90' : '1' };
-            const calls = record(getDiceSet(id), type, face, mode);
-            expect(createHash('sha1').update(calls.flat().join('\n')).digest('hex'), key).toBe(hash);
+            const hash = createHash('sha1').update(record(designs[id], type, face, mode).flat().join('\n')).digest('hex');
+            if (UPDATE) fresh.builtins[key] = hash;
+            else expect(hash, key).toBe(SNAPSHOT.builtins[key]);
         }
+        if (UPDATE) writeFileSync(new URL('./helpers/painter-calls.json', import.meta.url), JSON.stringify(fresh, null, 1) + '\n');
     });
 });

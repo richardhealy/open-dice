@@ -56,3 +56,20 @@ export function applyFrameTransform(ctx, frame, ts) {
     ctx.scale(R, -R);
     ctx.rotate(frame.af);
 }
+
+/**
+ * The face polygon's edges in canvas pixels as half-planes: a point p lies inside when
+ * n · p <= h for every edge, with n the unit outward normal. Used to fit numerals and decals.
+ */
+export function frameEdges(frame, ts) {
+    const pts = framePolygon(frame, ts);
+    const c = ts / 2;
+    return pts.map((a, j) => {
+        const b = pts[(j + 1) % pts.length];
+        let n = [b[1] - a[1], a[0] - b[0]];
+        const len = Math.hypot(n[0], n[1]) || 1;
+        n = [n[0] / len, n[1] / len];
+        if (n[0] * (a[0] - c) + n[1] * (a[1] - c) < 0) n = [-n[0], -n[1]];
+        return { n, h: n[0] * a[0] + n[1] * a[1] };
+    });
+}

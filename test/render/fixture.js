@@ -2,11 +2,18 @@ import * as THREE from 'three';
 // Namespace import: listDiceSets does not exist until Task 11, and a named import of a
 // missing export is a link-time error.
 import * as lib from '../../src/index.js';
+import { EXAMPLE_DESIGNS } from '../../examples/designs/index.js';
+import { paintNumeral, fitNumeralSize, TEXTURE_SIZE, NUMERAL_SIZE, CORNER_SIZE, CORNER_OFFSET, FIT_MARGIN } from '../../src/sets/face-painter.js';
+import { FACE_FRAMES, frameEdges, frameRadius } from '../../src/sets/face-frame.js';
+import { drawDecalImage } from '../../src/face-texture.js';
 
 const { DiceRoller, createDie, registerDiceSet } = lib;
 const SIZE = 320;
 const container = document.getElementById('stage');
 const roller = new DiceRoller({ container, width: SIZE, height: SIZE });
+
+// The library ships no designs; like any host, the fixture registers the example designs.
+for (const def of EXAMPLE_DESIGNS) registerDiceSet(def);
 
 /** A 64x64 PNG data URL painted here, so the image path needs no network. */
 function pngDataUrl(paint) {
@@ -80,7 +87,9 @@ function poseFor(type) {
 // `half` is 'tens' to render the second die of a d100 pair (isFirst = false), else the units.
 // `preload: false` skips the set's image preload (the font and environment still load) so the
 // die paints its fallback; `key` stores the pixels under another name than `<set>-<type>`.
-window.__renderDie = async (type, setId, half = 'units', { preload = true, key = null } = {}) => {
+// `target` paints that value on the face the pose turns up (the d20 pose shows face 0), so a
+// design's "20" decal can be viewed.
+window.__renderDie = async (type, setId, half = 'units', { preload = true, key = null, target } = {}) => {
     if (setId !== 'classic' && typeof roller.preloadSets === 'function') {
         await roller.preloadSets(preload ? [setId] : []);
     }
@@ -88,7 +97,16 @@ window.__renderDie = async (type, setId, half = 'units', { preload = true, key =
     const options = setId === 'classic' ? {} : { set: setId };
     // The roller's registry is passed so set images (and their repaint) go through the same
     // path as in the app; sets without images, and classic, paint exactly as without one.
-    const die = createDie(type, true, half !== 'tens', undefined, undefined, null, roller.scene, null,
+    // With a target, find the face this pose turns up (ask the library, as a settled roll does)
+    // and paint the target there.
+    let upIndex;
+    if (target !== undefined) {
+        const probe = createDie(type, true, half !== 'tens', undefined, undefined, null, null, null,
+            null, null, null, false, null, null, options);
+        probe.mesh.quaternion.copy(poseFor(type));
+        upIndex = lib.getDieValue(probe, new THREE.Vector3(0, 1, 0))[1];
+    }
+    const die = createDie(type, true, half !== 'tens', target, upIndex, null, roller.scene, null,
         null, null, null, false, null, roller.decalRegistry, options);
     die.mesh.quaternion.copy(poseFor(type));
     die.mesh.position.set(0, 1.2, 0);
@@ -138,3 +156,82 @@ window.__listSets = () => (typeof lib.listDiceSets === 'function'
     : ['classic']);
 
 window.__ready = true;
+
+/**
+ * Exhaustive fit probe: every numeral of every registered design, on every die type and face
+ * value (d4 corners and the d100 tens included), painted through the real paintNumeral with
+ * the embedded fonts; ink pixels outside the true face polygon are counted. Each d20 decal is
+ * drawn the way the decal pipeline draws it and checked against the face less its band margin.
+ */
+const PROBE_VALUES = {
+    d4: [1, 2, 3, 4], d6: [1, 2, 3, 4, 5, 6], d8: [1, 2, 3, 4, 5, 6, 7, 8], d10: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    d12: Array.from({ length: 12 }, (_, i) => i + 1), d20: Array.from({ length: 20 }, (_, i) => i + 1),
+    d100: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, '00', 10, 20, 30, 40, 50, 60, 70, 80, 90],
+};
+
+function inkOutside(canvas, edges, margin = 0) {
+    const ctx = canvas.getContext('2d');
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let outside = 0, ink = 0;
+    for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+            if (data[(y * canvas.width + x) * 4 + 3] <= 40) continue;
+            ink++;
+            const px = x + 0.5, py = y + 0.5;
+            if (edges.some(({ n, h }) => n[0] * px + n[1] * py > h - margin + 0.75)) outside++;
+        }
+    }
+    return { outside, ink };
+}
+
+// `fit: false` paints at the design size, the pre-fit behaviour (proves the probe catches overflow).
+window.__fitProbe = async ({ fit: useFit = true } = {}) => {
+    await lib.prepareDiceSets({ renderer: roller.renderer, scene: roller.scene });
+    const ts = TEXTURE_SIZE;
+    const glyphs = [];
+    const decals = [];
+    const ids = lib.listDiceSets().map((s) => s.id).filter((id) => id !== 'classic' && id !== FIXTURE_IMAGE_SET);
+    for (const id of ids) {
+        const set = lib.getDiceSet(id);
+        for (const type of Object.keys(PROBE_VALUES)) {
+            const edges = frameEdges(FACE_FRAMES[type], ts);
+            for (const value of PROBE_VALUES[type]) {
+                const corner = type === 'd4';
+                const text = String(value);
+                const x = ts / 2, y = corner ? ts / 2 - ts * CORNER_OFFSET : ts / 2 + (type === 'd100' ? 16 : 0);
+                const basePx = ts * (corner ? CORNER_SIZE : NUMERAL_SIZE) * set.numeral.scale;
+                const canvas = document.createElement('canvas');
+                canvas.width = canvas.height = ts;
+                const ctx = canvas.getContext('2d');
+                paintNumeral(ctx, text, { x, y, sizePx: basePx, set, mode: 'albedo', fit: useFit ? { type, ts, corner } : null });
+                const fitted = fitNumeralSize({ ctx, text, set, type, basePx, x, y, ts, corner });
+                glyphs.push({ id, type, text, ratio: fitted / basePx, ...inkOutside(canvas, edges) });
+            }
+        }
+        const decal = set.decals && set.decals.d20 && set.decals.d20['20'];
+        if (decal) {
+            const img = await roller.decalRegistry.load(decal.src);
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = ts;
+            drawDecalImage(canvas.getContext('2d'), img, decal, ts);
+            const margin = frameRadius(FACE_FRAMES.d20, ts) * FIT_MARGIN.band;
+            decals.push({ id, ...inkOutside(canvas, frameEdges(FACE_FRAMES.d20, ts), margin) });
+        }
+    }
+    return { glyphs, decals };
+};
+
+/** Ink pixels of a decal drawn at `scale` that reach into the d20's edge band (sizing helper). */
+window.__decalOutside = async (src, scale) => {
+    const ts = TEXTURE_SIZE;
+    const img = await roller.decalRegistry.load(src);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = ts;
+    drawDecalImage(canvas.getContext('2d'), img, { src, scale }, ts);
+    return inkOutside(canvas, frameEdges(FACE_FRAMES.d20, ts), frameRadius(FACE_FRAMES.d20, ts) * FIT_MARGIN.band).outside;
+};
+
+/** The d20 "20" decal of each registered design, for the sizing helper. */
+window.__designDecals = () => lib.listDiceSets().map((s) => lib.getDiceSet(s.id))
+    .filter((set) => set.decals && set.decals.d20 && set.decals.d20['20'])
+    .map((set) => ({ id: set.id, src: set.decals.d20['20'].src, scale: set.decals.d20['20'].scale }));

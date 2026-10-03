@@ -1,3 +1,5 @@
+import { compassStar, svgDataUrl } from './decal-art.js';
+
 /** Black glass with gold inlaid numerals and gold edges. No decoration: the numerals are the jewellery. */
 export default {
     id: 'obsidian-gold',
@@ -11,5 +13,7 @@ export default {
     edge: { metal: 'gold' },
     numeral: { color: '#D4AF37', style: 'inlay', metal: 'gold', scale: 1.05 },
     decor: null,
+    // The "20" carries a mark instead of its numeral, as an ordinary decal (any host can override it).
+    decals: { d20: { '20': { src: svgDataUrl(compassStar()), scale: 0.78 } } },
     swatch: ['#0B0B10', '#D4AF37'],
 };

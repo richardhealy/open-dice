@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CLASSIC, CLASSIC_SET, registerDiceSet, getDiceSet, listDiceSets, resolveSet, _resetRegistryForTests } from '../../src/sets/index.js';
+import { CLASSIC, CLASSIC_SET, registerDiceSet, unregisterDiceSet, getDiceSet, listDiceSets, resolveSet, _resetRegistryForTests } from '../../src/sets/index.js';
+import { getOrCreateTexture, cacheSize, clearDiceSetCaches } from '../../src/sets/texture-cache.js';
+import * as THREE from 'three';
 
 const def = (id) => ({ id, name: id, family: 'gem', body: { color: '#123456' }, edge: { metal: 'gold' }, numeral: { color: '#000000', style: 'flat' }, swatch: ['#123456'] });
 
@@ -19,6 +21,28 @@ describe('dice set registry', () => {
         const got = getDiceSet('house-brass');
         expect(Object.isFrozen(got)).toBe(true);
         expect(got.name).toBe('house-brass');
+    });
+
+    it('replace: true swaps a registered definition and drops that design\'s cached textures only', () => {
+        clearDiceSetCaches();
+        registerDiceSet(def('swap-me'));
+        registerDiceSet(def('keep-me'));
+        getOrCreateTexture('swap-me|d20|albedo|20', () => new THREE.Texture());
+        getOrCreateTexture('keep-me|d20|albedo|20', () => new THREE.Texture());
+        expect(registerDiceSet({ ...def('swap-me'), name: 'Swapped' }, { replace: true })).toBe('swap-me');
+        expect(getDiceSet('swap-me').name).toBe('Swapped');
+        expect(cacheSize()).toBe(1);                                                   // keep-me's texture survives
+        expect(() => registerDiceSet({ ...def('classic') }, { replace: true })).toThrow(/already exists/);
+    });
+
+    it('unregisterDiceSet removes a design and its textures; unknown ids return false', () => {
+        clearDiceSetCaches();
+        registerDiceSet(def('gone'));
+        getOrCreateTexture('gone|d6|albedo|1', () => new THREE.Texture());
+        expect(unregisterDiceSet('gone')).toBe(true);
+        expect(getDiceSet('gone')).toBeUndefined();
+        expect(cacheSize()).toBe(0);
+        expect(unregisterDiceSet('gone')).toBe(false);
     });
 
     it('refuses duplicates and the reserved id', () => {

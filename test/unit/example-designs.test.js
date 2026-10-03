@@ -1,19 +1,59 @@
-import { describe, it, expect } from 'vitest';
-import { BUILTIN_SETS } from '../../src/sets/builtin/index.js';
-import { listDiceSets, getDiceSet } from '../../src/sets/index.js';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { EXAMPLE_DESIGNS } from '../../examples/designs/index.js';
+import { EXTENT, REACH } from '../../examples/designs/decal-art.js';
+import { listDiceSets, getDiceSet, registerDiceSet, _resetRegistryForTests } from '../../src/sets/index.js';
 import { validateSet } from '../../src/sets/validate.js';
+import { FACE_FRAMES, frameRadius } from '../../src/sets/face-frame.js';
+import { TEXTURE_SIZE, FIT_MARGIN } from '../../src/sets/face-painter.js';
 
-describe('built-in sets', () => {
-    it('ships the ten built-in sets in catalogue order after classic', () => {
-        expect(listDiceSets().map((s) => s.id)).toEqual([
-            'classic', 'ruby-jewel', 'emerald-jewel', 'sapphire-jewel', 'obsidian-gold', 'ember-dragonhide',
-            'tidepool-pour', 'witchlight-vines', 'mainframe', 'rosewood-knotwork', 'rose-felt',
-        ]);
+const IDS = [
+    'ruby-jewel', 'emerald-jewel', 'sapphire-jewel', 'obsidian-gold', 'ember-dragonhide',
+    'tidepool-pour', 'witchlight-vines', 'mainframe', 'rosewood-knotwork', 'rose-felt',
+];
+
+describe('the library ships no designs', () => {
+    it('only classic is registered until a host registers its own', () => {
+        _resetRegistryForTests();
+        expect(listDiceSets().map((s) => s.id)).toEqual(['classic']);
+    });
+});
+
+describe('example designs (registered here the way a host would)', () => {
+    beforeAll(() => {
+        _resetRegistryForTests();
+        for (const def of EXAMPLE_DESIGNS) registerDiceSet(def);
     });
 
-    it('every definition validates as written', () => {
-        expect(BUILTIN_SETS).toHaveLength(10);
-        for (const def of BUILTIN_SETS) expect(() => validateSet(def)).not.toThrow();
+    it('lists the ten examples in catalogue order after classic', () => {
+        expect(listDiceSets().map((s) => s.id)).toEqual(['classic', ...IDS]);
+    });
+
+    it('every definition validates as written and is plain JSON', () => {
+        expect(EXAMPLE_DESIGNS).toHaveLength(10);
+        for (const def of EXAMPLE_DESIGNS) {
+            expect(() => validateSet(def)).not.toThrow();
+            expect(JSON.parse(JSON.stringify(def))).toEqual(def);              // storable and servable by a host as-is
+        }
+    });
+
+    it('seven designs mark the d20 "20" with a decal that fits the face; the glowing designs keep the numeral', () => {
+        const decorated = ['ruby-jewel', 'emerald-jewel', 'sapphire-jewel', 'obsidian-gold', 'tidepool-pour', 'rosewood-knotwork', 'rose-felt'];
+        const d20 = FACE_FRAMES.d20;
+        const R = frameRadius(d20, TEXTURE_SIZE);
+        const room = R * Math.cos(Math.PI / d20.sides) - R * FIT_MARGIN.band;          // inradius less the band margin
+        for (const id of IDS) {
+            const set = getDiceSet(id);
+            if (!decorated.includes(id)) { expect(set.decals, id).toBeNull(); continue; }
+            const decal = set.decals.d20['20'];
+            expect(decal.src.startsWith('data:image/svg+xml')).toBe(true);
+            expect(Object.keys(set.decals)).toEqual(['d20']);                          // never on the d100 tens die
+            // Sized to the largest scale whose ink clears the d20's edge band; the render harness
+            // proves the fit on real pixels in Chromium and WebKit. Here: sane bounds only.
+            expect(decal.scale, id).toBeGreaterThan(0.5);
+            expect(decal.scale, id).toBeLessThanOrEqual(1.4);
+            expect(room).toBeGreaterThan(0);
+        }
+        for (const [art, r] of Object.entries(REACH)) expect(r, art).toBeLessThanOrEqual(EXTENT);
     });
 
     it('matches the spec recipes', () => {
@@ -72,7 +112,7 @@ describe('built-in sets', () => {
         expect(rosewood.decor[0]).toMatchObject({ art: 'knotwork', metal: 'gold' });
         expect(rosewood.numeral.style).toBe('engraved');
         expect(rosewood.edge.metal).toBe('gold');
-        expect(rosewood.emblems['20']).toMatchObject({ art: 'sunburst', metal: 'gold' });
+        expect(rosewood.emblems).toBeNull();                                        // its sunburst is a decal now
 
         const felt = getDiceSet('rose-felt');
         expect(felt.body.texture.kind).toBe('felt');
