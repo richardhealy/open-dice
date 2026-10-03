@@ -153,3 +153,104 @@ describe('model dice', () => {
         expect(dieMaterials(classic)).toEqual(classic.mesh.material);
     });
 });
+
+describe('decals on model dice', () => {
+    // A design's decals (and a die's own) replace the number on their value's face, drawn as on
+    // a classic face, so one `decals` entry gives a design its icons on both kinds of die.
+    let restore;
+    const skull = { width: 64, height: 64 };
+    const crown = { width: 64, height: 64 };
+    const registryWith = (images) => ({
+        get: (src) => images[src],
+        load: (src) => (images[src] ? Promise.resolve(images[src]) : Promise.reject(new Error(`404 ${src}`))),
+        preload: async () => [],
+    });
+    const decalSet = (decals, id = 'cube-decals') => validateSet({ ...cubeDesign(id), decals });
+    const roll = (set, registry, { target, landing, secret = false, own = null } = {}) =>
+        createDie('d6', true, true, target, landing, null, null, null, null, null, null, secret, own, registry, { set });
+    /** Each label mesh by the value it was analysed with. */
+    const labelsByValue = (die) => {
+        const meshes = die.mesh.children.filter((c) => c.userData.label);
+        return Object.fromEntries(die.model.labels.map((l, i) => [l.value, meshes[i]]));
+    };
+    const drawn = (mesh) => callsNamed(mesh.material.map.image, 'drawImage').map((c) => c.args[0]);
+    const text = (mesh) => (callsNamed(mesh.material.map.image, 'fillText')[0] || { args: [null] }).args[0];
+
+    beforeEach(async () => {
+        restore = setCanvasFactories({ canvas: (size) => makeRecordingCanvas(size) });
+        clearDiceSetCaches();
+        clearModelCache();
+        setModelLoader(async () => boxScene());
+        await loadModel('cube.glb');
+    });
+    afterEach(() => { restore(); setModelLoader(null); });
+
+    it("a design's decal replaces the number on its face, drawn as on a classic face", () => {
+        const set = decalSet({ d6: { 6: { src: 'skull.png', scale: 1.2, rotation: 30 } } });
+        const labels = labelsByValue(roll(set, registryWith({ 'skull.png': skull })));
+        expect(drawn(labels[6])).toEqual([skull]);
+        expect(text(labels[6])).toBe(null);
+        const canvas = labels[6].material.map.image;
+        // 0.7 of the square times the decal's scale, turned by its rotation (face-texture.js drawDecalImage).
+        expect(callsNamed(canvas, 'drawImage')[0].args[3]).toBeCloseTo(canvas.width * 0.7 * 1.2);
+        expect(callsNamed(canvas, 'rotate')[0].args[0]).toBeCloseTo(Math.PI / 6);
+        for (const v of [1, 2, 3, 4, 5]) {
+            expect(text(labels[v])).toBe(String(v));
+            expect(drawn(labels[v])).toEqual([]);
+        }
+    });
+
+    it('the icon follows its value through a replay', () => {
+        const set = decalSet({ d6: { 6: { src: 'skull.png' } } });
+        const landing = set.models.d6.faces.findIndex((f) => f.value === 5);
+        const labels = labelsByValue(roll(set, registryWith({ 'skull.png': skull }), { target: 6, landing }));
+        expect(drawn(labels[5])).toEqual([skull]);      // the landing face shows the 6, so it shows the 6's icon
+        expect(drawn(labels[6])).toEqual([]);
+        expect(text(labels[6])).toBe('5');
+    });
+
+    it('a secret roll hides the icons with the numbers', () => {
+        const set = decalSet({ d6: { 6: { src: 'skull.png' } } });
+        const labels = labelsByValue(roll(set, registryWith({ 'skull.png': skull }), { secret: true }));
+        for (const mesh of Object.values(labels)) {
+            expect(drawn(mesh)).toEqual([]);
+            expect(text(mesh)).toBe('?');
+        }
+    });
+
+    it('the number shows until the image loads, then the icon; an image that fails keeps the number', async () => {
+        let arrive;
+        const pending = new Promise((resolve) => { arrive = resolve; });
+        const registry = { get: () => undefined, load: (src) => (src === 'skull.png' ? pending : Promise.reject(new Error('404'))), preload: async () => [] };
+        const set = decalSet({ d6: { 6: { src: 'skull.png' }, 1: { src: 'missing.png' } } });
+        const labels = labelsByValue(roll(set, registry));
+        expect(text(labels[6])).toBe('6');
+        const version = labels[6].material.version;
+        arrive(skull);
+        await pending;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(drawn(labels[6])).toEqual([skull]);
+        expect(labels[6].material.version).toBeGreaterThan(version);   // the material re-uploads
+        expect(text(labels[1])).toBe('1');
+        expect(drawn(labels[1])).toEqual([]);
+    });
+
+    it("the die's own decal replaces the design's, and null switches it off", () => {
+        const set = decalSet({ d6: { 6: { src: 'skull.png' }, 1: { src: 'skull.png' } } });
+        const registry = registryWith({ 'skull.png': skull, 'crown.png': crown });
+        const labels = labelsByValue(roll(set, registry, { own: { 6: { src: 'crown.png' }, 1: null } }));
+        expect(drawn(labels[6])).toEqual([crown]);
+        expect(drawn(labels[1])).toEqual([]);
+        expect(text(labels[1])).toBe('1');
+    });
+
+    it('dice showing the same icon share its texture, as they share numerals', () => {
+        const set = decalSet({ d6: { 6: { src: 'skull.png' } } });
+        const registry = registryWith({ 'skull.png': skull });
+        const a = labelsByValue(roll(set, registry));
+        const b = labelsByValue(roll(set, registry));
+        expect(drawn(a[6])).toEqual([skull]);
+        expect(a[6].material.map).toBe(b[6].material.map);
+        expect(a[6].material).not.toBe(b[6].material);
+    });
+});

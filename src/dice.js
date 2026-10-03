@@ -42,7 +42,7 @@ export function createDie(type, visible = true, isFirst = true, targetNumber, fo
     const resolvedSet = options.set ? resolveSet(options.set) : null;
     const model = resolvedSet && resolvedSet.models ? resolvedSet.models[type] : null;
     if (model && loadedModel(model.src)) {
-        const die = createModelDie({ type, model, set: resolvedSet, visible, targetNumber, foundClosestIndex, isSecret, material });
+        const die = createModelDie({ type, model, set: resolvedSet, visible, targetNumber, foundClosestIndex, isSecret, material, decals, decalRegistry });
         if (!visible) die.mesh.visible = false;
         if (targetScene) targetScene.add(die.mesh);
         if (targetWorld) targetWorld.addBody(die.body);

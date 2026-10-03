@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { buildHull, hullShape } from './hull.js';
 import { loadedModel } from './loader.js';
-import { labelStyle, labelTexture, labelGeometry } from './labels.js';
+import { labelStyle, labelTexture, labelDecalTexture, labelGeometry } from './labels.js';
 import { MODEL_DIE_VALUES } from './spec.js';
 
 /**
@@ -104,12 +104,32 @@ function cloneMaterials(object) {
 }
 
 /**
+ * Show a decal on a label in place of its numeral: at once when the image is loaded, else
+ * once it arrives (the numeral stays meanwhile, and for good if the image fails), as a
+ * classic face does.
+ */
+function showDecal(labelMaterial, decal, decalRegistry) {
+    const image = decalRegistry.get(decal.src);
+    if (image) {
+        labelMaterial.map = labelDecalTexture(image, decal);
+        return;
+    }
+    Promise.resolve(decalRegistry.load(decal.src)).then((loaded) => {
+        if (!loaded) return;
+        labelMaterial.map = labelDecalTexture(loaded, decal);
+        labelMaterial.needsUpdate = true;
+    }).catch(() => {});
+}
+
+/**
  * Build a model die. With `targetNumber` and `foundClosestIndex` (a replay), the labels are
  * permuted so the predicted landing face shows the target, exactly as classic dice repaint.
- * Invisible dice (the roll prediction) get the body and an empty group, nothing to render.
+ * `decals` (`{ [value]: decal }`, the design's merged with the die's own; see createDie) put
+ * an image in place of a value's numeral, following the value through a replay; secret dice
+ * show none. Invisible dice (the roll prediction) get the body and an empty group.
  * @returns {{ mesh: THREE.Group, body: CANNON.Body, type: string, model: object, faceValues: number[] }}
  */
-export function createModelDie({ type, model, set, visible = true, targetNumber, foundClosestIndex, isSecret = false, material = null }) {
+export function createModelDie({ type, model, set, visible = true, targetNumber, foundClosestIndex, isSecret = false, material = null, decals = null, decalRegistry = null }) {
     const body = new CANNON.Body({ mass: 1, shape: hullShape(modelHull(model)), material: material || undefined });
     // Settles only after resting MODEL_REST_STEPS steps in a row (see physics-config).
     body.modelDie = true;
@@ -125,7 +145,9 @@ export function createModelDie({ type, model, set, visible = true, targetNumber,
         for (const label of model.labels) {
             const geometry = labelGeometry(template, label);
             if (!geometry) continue;
-            const text = isSecret ? '?' : String(swap(label.value));
+            const value = swap(label.value);
+            const text = isSecret ? '?' : String(value);
+            const decal = !isSecret && decals && decalRegistry ? decals[value] : null;
             const labelMaterial = new THREE.MeshStandardMaterial({
                 map: labelTexture(text, style, fit),
                 transparent: true,
@@ -136,6 +158,7 @@ export function createModelDie({ type, model, set, visible = true, targetNumber,
                 roughness: 0.45,
                 metalness: 0,
             });
+            if (decal && decal.src) showDecal(labelMaterial, decal, decalRegistry);
             const labelMesh = new THREE.Mesh(geometry, labelMaterial);
             labelMesh.userData.label = true;
             labelMesh.renderOrder = 1;

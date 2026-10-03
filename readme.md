@@ -190,7 +190,7 @@ Rules:
 - Designs ignore `diceColor`, `textColor` and `backgroundColor`: the palette is the design. `classic` honours them, so "standard dice in my colours" is `set: 'classic'` on the die (or no set at all when the roller has no default design: a die without `set` takes the roller's default).
 - An unknown design id logs one warning and renders `classic`, so a spectator without that design registered, or a stale id, can never break a roll.
 - `registerDiceSet` validates the definition and throws naming the failing field. `classic` is reserved, and an id already registered throws unless you pass `{ replace: true }`.
-- Per-die `decals` work with every design's procedural dice, and `isSecret` with every die: a model die's own labels show `?`, though numbers painted into a model's texture stay visible.
+- Per-die `decals` and `isSecret` work with every die, model dice included: a model die's own labels show `?`, though numbers painted into a model's texture stay visible.
 - The first roll with a design waits a few milliseconds for the numeral fonts and the reflection map; `preloadSets()` moves that cost to page load.
 - To draw a design without a roller (a picker preview, say), prepare it, then pass the same `DecalRegistry` to `createDie` so the design's decals and images paint:
 
@@ -251,7 +251,7 @@ decals: {
 }
 ```
 
-Design decals are validated when the design is registered: `src` is required, `scale` is 0.1 to 2, `offsetX` and `offsetY` are -0.5 to 0.5, `rotation` is -360 to 360 degrees, and the face value must exist on that die (a d20 has no "21"); an empty `decals` is treated as none. They travel through the same pipeline as per-die decals. The roller's `DecalRegistry` loads them, and `preloadSets()` includes them. They replace the numeral on that face, and secret rolls hide them. Keying by die type keeps a d20's "20" mark off the d100's tens face. A die's own `decals` option overrides the design's decal for the same value, and `null` switches it off:
+Design decals are validated when the design is registered: `src` is required, `scale` is 0.1 to 2, `offsetX` and `offsetY` are -0.5 to 0.5, `rotation` is -360 to 360 degrees, and the face value must exist on that die (a d20 has no "21"); an empty `decals` is treated as none. They travel through the same pipeline as per-die decals. The roller's `DecalRegistry` loads them, and `preloadSets()` includes them. They replace the numeral on that face (on a model die, that value's label), and secret rolls hide them. Keying by die type keeps a d20's "20" mark off the d100's tens face. A die's own `decals` option overrides the design's decal for the same value, and `null` switches it off:
 
 ```js
 await roller.roll([{ dice: 'd20', rolled: 20, set: 'ruby-jewel', decals: { '20': null } }]);   // the numeral, not the crown
@@ -444,6 +444,7 @@ When the geometry must stay a true polyhedron (a texturing service paints it, th
 
 - Each die clones the model with its own materials, so effects (`glow`) and `reset()` fades touch one die. `dieMaterials(die)` returns every material of any die for your own effects.
 - The labels use the design's numeral font, one glyph size per die; `isSecret` labels show `?`.
+- A decal for a value, the design's or the die's own, replaces that value's label with its image. It is drawn into the label's square as a classic face draws it (0.7 of the square times `scale`, with the same offsets and rotation), so the label's `size` sets how big it is. It follows its value through a replay, secret rolls hide it, and the number shows until the image has loaded (for good if it fails).
 - Colour textures are read as they are, like the procedural dice (the roller renders in linear space), so a model looks as its preview did. This switches the loaded scene's colour textures to linear in place: load a separate copy for anything rendered in sRGB.
 - A roll waits for the models it needs; `preloadSets()` and `prepareDiceSets({ sets })` load them ahead. Without a loader, or when a file fails or takes longer than the loader's `timeoutMs` (`setModelLoader(fn, { timeoutMs })`, 20 s by default), that die rolls as the design's procedural die and one warning is logged; `clearModelCache()` retries.
 - `open-dice-dnd/gltf` parses with three's GLTFLoader bundled against the library's own `three`, so loaded scenes share the roller's three instance. It is ES only; pass `{ loader }` for a GLTFLoader with Draco or meshopt decoders, `{ fetchOptions }` for credentials. UMD users pass their own loader to `setModelLoader`.
@@ -704,6 +705,11 @@ npm run build
 ---
 
 ## 📝 Changelog
+
+### [1.8.0] - 2026-10-03
+
+- 🧊 Model dice draw decals. A design's `decals` (and a die's own) now put an image in place of a value's label on a model die, as they already did on the procedural dice: the same options, the same loading, the same secret-roll hiding, and the image follows its value through a replay.
+- Replacing a design (`registerDiceSet(…, { replace: true })`) no longer keeps the old design's model templates alive, so an editor that re-registers a design on every change does not grow memory.
 
 ### [1.7.0] - 2026-10-03
 

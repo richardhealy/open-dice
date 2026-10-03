@@ -3,7 +3,7 @@ import { DecalGeometry } from './vendor.js';
 import { createCanvas } from '../sets/canvas-factory.js';
 import { fontStack, isNumeralFontReady } from '../sets/fonts/numerals.js';
 import { cacheKey, getOrCreateTexture, getTextureAnisotropy } from '../sets/texture-cache.js';
-import { isUnderlined } from '../face-texture.js';
+import { isUnderlined, drawDecalImage } from '../face-texture.js';
 
 /**
  * The numbers on a model die. Each label is a decal: the model's own surface under the label,
@@ -72,6 +72,24 @@ export function labelTexture(text, style, fitTexts = [text]) {
             ctx.lineTo(c + w / 2, y);
             ctx.stroke();
         }
+        const texture = new THREE.Texture(canvas);
+        texture.anisotropy = getTextureAnisotropy();
+        texture.needsUpdate = true;
+        return texture;
+    });
+}
+
+/**
+ * A transparent square with a decal image where the numeral would be, drawn exactly as a
+ * classic face draws it (face-texture.js drawDecalImage: 0.7 of the square times `scale`,
+ * offsets as fractions of the square, rotation in degrees). Cached per image and options.
+ */
+export function labelDecalTexture(image, decal) {
+    const key = cacheKey(['model-label-decal', decal.src, decal.scale ?? 1, decal.offsetX ?? 0, decal.offsetY ?? 0, decal.rotation ?? 0]);
+    return getOrCreateTexture(key, () => {
+        const size = LABEL_TEXTURE_SIZE;
+        const canvas = createCanvas(size);
+        drawDecalImage(canvas.getContext('2d'), image, decal, size);
         const texture = new THREE.Texture(canvas);
         texture.anisotropy = getTextureAnisotropy();
         texture.needsUpdate = true;
