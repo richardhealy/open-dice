@@ -374,6 +374,28 @@ describe('buildFaceMaterials: map modes, images and shared emissive intensity', 
         expect(late[1].normalMap).not.toBe(normal);
     });
 
+    it('a normal image is requested even when nothing generated paints a map, and is the normal map on the next build', async () => {
+        // A designer texture: a body image with its own normal map, no decoration and no pattern
+        // relief, so before the image arrives there is no normal map at all to hang a repaint on.
+        const img = { width: 256, height: 256 }, body = { width: 256, height: 256 };
+        const registry = lateRegistry({ [NORMAL_IMAGE_SRC]: img, [BODY_IMAGE_SRC]: body });
+        const requested = [];
+        const load = registry.load;
+        registry.load = (src) => { requested.push(src); return load(src); };
+        const set = { ...IMAGE, id: 'image-normal-only', decor: null, body: { ...IMAGE.body, normalImage: { src: NORMAL_IMAGE_SRC } } };
+        const first = build(set, 'd6', [null, { text: '6' }], registry);
+        expect(first[1].normalMap).toBeNull();
+        expect(requested).toContain(BODY_IMAGE_SRC);
+        expect(requested).toContain(NORMAL_IMAGE_SRC);
+        await flush();
+        const second = build(set, 'd6', [null, { text: '6' }], registry);
+        expect(second[1].normalMap).toBeInstanceOf(THREE.Texture);
+        expect(drawn(second[1].normalMap.image)[0]).toBe(img);                                           // the image is the base
+        expect(callsNamed(second[1].normalMap.image, 'getImageData')).toHaveLength(0);                   // nothing generated to blend over it
+        expect(drawn(second[1].map.image)).toContain(body);
+        expect(build(set, 'd6', [null, { text: '6' }], registry)[1].normalMap).toBe(second[1].normalMap);
+    });
+
     it('a failed image warns once per source and leaves the fallback', async () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         const registry = { get: () => undefined, load: (src) => Promise.reject(new Error(`nope ${src}`)) };

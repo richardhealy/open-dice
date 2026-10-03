@@ -166,19 +166,22 @@ function paintNormalCanvas(set, type, img, target = null) {
 
 /**
  * The shared normal texture of a (set, type), cached per images loaded. A normal image still
- * loading is fetched and the texture's canvas repainted when it arrives; without a registry,
- * or when nothing paints a map before the image arrives, the next build picks it up.
+ * loading is fetched whether or not anything painted a map before it arrived: with a canvas
+ * (generated relief) that canvas is repainted when the image lands; without one (no decor
+ * relief, no pattern strength) there is nothing to repaint and the next build, keyed by one
+ * more loaded image, paints the image as the base. Without a registry the fallback stands.
  */
 function normalTexture(set, type, decalRegistry) {
     const spec = set.body.normalImage;
     const img = spec && decalRegistry ? decalRegistry.get(spec.src) || null : null;
     return getOrCreateTexture(cacheKey([set.id, type, 'normal', `img:${loadedImageCount(set, decalRegistry)}`]), () => {
         const canvas = paintNormalCanvas(set, type, img);
-        if (!canvas) return null;
-        const texture = canvasTexture(canvas);
+        const texture = canvas ? canvasTexture(canvas) : null;
         if (spec && !img && decalRegistry) {
+            // The registry hands repeated requests for one source the same in-flight promise,
+            // so asking again from every build before it arrives (a null is never cached) is free.
             loadImage(decalRegistry, spec.src).then((loaded) => {
-                if (!loaded) return;
+                if (!loaded || !canvas) return;
                 paintNormalCanvas(set, type, loaded, canvas);
                 texture.needsUpdate = true;
             });
