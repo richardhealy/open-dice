@@ -1,6 +1,7 @@
 import { FAMILY_DEFAULTS, METALS } from './materials.js';
 import { NUMERAL_FONT_FAMILY } from './fonts/numerals.js';
 import { hasDecor } from './decor/index.js';
+import { hasEmblem } from './decor/emblems.js';
 import { PATTERN_KINDS } from './noise.js';
 import { shade } from './color.js';
 
@@ -10,8 +11,6 @@ const STYLES = ['flat', 'engraved', 'inlay', 'glow'];
 const METAL_NAMES = Object.keys(METALS);
 const IMAGE_FITS = ['cover', 'tile'];
 const MAX_DECOR_LAYERS = 6;
-/** Built-in emblem arts (src/sets/decor/emblems.js); the art registry extends this list later. */
-export const EMBLEM_ARTS = ['sunburst', 'star', 'crown', 'skull'];
 
 function fail(field, message) {
     throw new Error(`open-dice-dnd: invalid dice set — ${field}: ${message}`);
@@ -118,7 +117,7 @@ function decorLayer(field, d) {
 function emblemSpec(field, e, numeralColor) {
     const value = typeof e === 'string' ? { art: e } : e;
     if (!value || typeof value !== 'object' || Array.isArray(value)) fail(field, 'must be an art id or { art, metal | color, scale, relief }');
-    if (typeof value.art !== 'string' || !EMBLEM_ARTS.includes(value.art)) fail(`${field}.art`, `unknown emblem "${value.art}"`);
+    if (typeof value.art !== 'string' || !hasEmblem(value.art)) fail(`${field}.art`, `unknown emblem "${value.art}"`);
     const { metal, color } = finish(field, value, { required: false, defaultColor: numeralColor });
     return { art: value.art, metal, color, scale: range(`${field}.scale`, value.scale, 0.3, 1.2, 0.8), relief: range(`${field}.relief`, value.relief, 0, 1, 0.5) };
 }
