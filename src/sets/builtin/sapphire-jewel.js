@@ -14,7 +14,7 @@ export default {
         texture: { kind: 'veins', color2: '#5B8CFF', scale: 3, contrast: 0.25 },
     },
     edge: { metal: 'gold' },
-    numeral: { color: '#08123A', style: 'engraved' },
+    numeral: { color: '#F8E9C8', style: 'engraved' },   // cream: dark numerals vanished on the deep body
     decor: { art: 'filigree', metal: 'gold', relief: 0.6 },
     swatch: ['#1C4FD6', '#D4AF37'],
 };

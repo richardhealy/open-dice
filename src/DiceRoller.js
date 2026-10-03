@@ -6,6 +6,8 @@ import { SoundManager } from './sound-manager.js';
 import { glow, scalePulse, haloRing, runEffectsRules } from './effects/index.js';
 import { resolveSet, CLASSIC } from './sets/index.js';
 import { prepareDiceSets } from './sets/prepare.js';
+import { setTextureAnisotropy } from './sets/texture-cache.js';
+import { resolvePixelRatio } from './pixel-ratio.js';
 
 const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
@@ -34,6 +36,7 @@ export class DiceRoller {
      * @param {number} [options.throwSpin=20] - Initial throw spin
      * @param {Function} [options.onRollComplete] - Callback when dice settle (main rolls only)
      * @param {string} [options.set] - Default dice set id for every die (see setDefaultSet)
+     * @param {number} [options.pixelRatio] - Canvas pixel ratio; defaults to the device ratio capped at 2. Pass 1 to opt out.
      */
     constructor(options = {}) {
         if (!options.container) {
@@ -45,6 +48,7 @@ export class DiceRoller {
         this.height = options.height || this.container.clientHeight;
         this.throwSpeed = options.throwSpeed || 15;
         this.throwSpin = options.throwSpin || 20;
+        this.pixelRatio = resolvePixelRatio(options.pixelRatio, typeof window !== 'undefined' ? window.devicePixelRatio : 1);
         this.onRollComplete = options.onRollComplete || null;
         // Fires once per batch as it settles, with the same {total, variances, results}
         // object plus a reference to the batch dice. Lets callers schedule per-die effects
@@ -107,7 +111,10 @@ export class DiceRoller {
         this.camera.updateProjectionMatrix();
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.renderer.setPixelRatio(this.pixelRatio);
         this.renderer.setSize(this.width, this.height);
+        // Set textures are filtered anisotropically so numerals stay sharp on tilted faces.
+        setTextureAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.container.appendChild(this.renderer.domElement);

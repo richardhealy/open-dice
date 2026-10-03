@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as THREE from 'three';
 import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
 import { buildFaceMaterials, materialCount, PLACEHOLDER_MATERIAL } from '../../src/sets/face-materials.js';
-import { clearDiceSetCaches, cacheSize } from '../../src/sets/texture-cache.js';
+import { clearDiceSetCaches, cacheSize, setTextureAnisotropy } from '../../src/sets/texture-cache.js';
 import { _resetRegistryForTests } from '../../src/sets/index.js';
 import { _setNumeralFontReadyForTests } from '../../src/sets/fonts/numerals.js';
 import { _clearPatternCacheForTests } from '../../src/sets/face-painter.js';
@@ -155,6 +155,17 @@ describe('buildFaceMaterials', () => {
             expect(c.calls.filter((x) => x.name === 'putImageData')).toHaveLength(0);
             expect(c.calls.filter((x) => x.name === 'drawImage').length).toBeGreaterThanOrEqual(1);
         }
+    });
+
+    it('set textures take the configured anisotropy; classic textures are untouched', () => {
+        setTextureAnisotropy(8);
+        const mats = buildFaceMaterials({ type: 'd20', geometry: geometryWithGroups(3), faces: FACES, set: GEM });
+        expect(mats[1].map.anisotropy).toBe(8);
+        expect(mats[1].roughnessMap.anisotropy).toBe(8);
+        expect(mats[1].normalMap.anisotropy).toBe(8);
+        const classic = buildFaceMaterials({ type: 'd20', geometry: geometryWithGroups(2), faces: [null, { text: '1' }], colors: COLORS });
+        expect(classic[1].map.anisotropy).toBe(1);
+        setTextureAnisotropy(1);
     });
 
     it('an unknown set id renders classic and warns', () => {

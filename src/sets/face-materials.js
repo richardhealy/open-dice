@@ -3,7 +3,7 @@ import { createFaceTexture, createD4FaceTexture } from '../face-texture.js';
 import { CLASSIC, resolveSet } from './index.js';
 import { createEdgeMaterial, createFaceMaterial } from './materials.js';
 import { paintFace, paintNormalMap } from './face-painter.js';
-import { cacheKey, getOrCreateTexture } from './texture-cache.js';
+import { cacheKey, getOrCreateTexture, getTextureAnisotropy } from './texture-cache.js';
 import { isNumeralFontReady, ensureNumeralFont } from './fonts/numerals.js';
 
 /** One material for every slot of a die that is never rendered (prediction bodies). */
@@ -47,6 +47,7 @@ function faceKey(face, isSecret, decals, textOffsetY) {
 
 function canvasTexture(canvas) {
     const texture = new THREE.Texture(canvas);
+    texture.anisotropy = getTextureAnisotropy();
     texture.needsUpdate = true;
     return texture;
 }

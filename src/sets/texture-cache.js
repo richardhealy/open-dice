@@ -6,6 +6,16 @@
 import { clearPatternCache } from './face-painter.js';
 
 const cache = new Map();
+let anisotropy = 1;
+
+/** Anisotropic filtering level for set textures; DiceRoller sets the renderer's maximum. */
+export function setTextureAnisotropy(value) {
+    anisotropy = Math.max(1, Math.floor(Number(value) || 1));
+}
+
+export function getTextureAnisotropy() {
+    return anisotropy;
+}
 
 export function cacheKey(parts) {
     return parts.map((p) => (p === undefined || p === null ? '' : String(p))).join('|');

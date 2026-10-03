@@ -43,13 +43,16 @@ window.__renderDie = async (type, setId) => {
     current = die;
 
     roller.renderer.render(roller.scene, roller.camera);
+    // Output in device pixels: at devicePixelRatio 1 (the harness) this is exactly SIZE, so
+    // the baselines are unaffected; at 2 it shows whether the renderer draws at full density.
+    const px = Math.round(SIZE * (window.devicePixelRatio || 1));
     const out = document.createElement('canvas');
-    out.width = out.height = SIZE;
+    out.width = out.height = px;
     const ctx = out.getContext('2d');
     ctx.fillStyle = '#2b2f36';
-    ctx.fillRect(0, 0, SIZE, SIZE);
-    ctx.drawImage(roller.renderer.domElement, 0, 0);
-    window.__renders[`${setId}-${type}`] = ctx.getImageData(0, 0, SIZE, SIZE).data;
+    ctx.fillRect(0, 0, px, px);
+    ctx.drawImage(roller.renderer.domElement, 0, 0, px, px);
+    window.__renders[`${setId}-${type}`] = ctx.getImageData(0, 0, px, px).data;
     return out.toDataURL('image/png');
 };
 
