@@ -3,6 +3,9 @@ import * as CANNON from 'cannon-es';
 import { D10_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
 import { buildFaceMaterials } from '../sets/face-materials.js';
 
+/** The d100 numerals sit this many texture pixels below the face centre. */
+export const D100_TEXT_OFFSET_Y = 16;
+
 export function createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#e67e22', isSecret = false, decals = null, decalRegistry = null, options = {}) {
     const radius = size * 0.9;
     const tab = 0;
@@ -45,7 +48,7 @@ export function createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, d
         isSecret,
         decals,
         decalRegistry,
-        textOffsetY: 16,
+        textOffsetY: D100_TEXT_OFFSET_Y,
         set: options.set,
         visible: options.visible !== false,
     });

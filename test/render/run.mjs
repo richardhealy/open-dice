@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from '@playwright/test';
+import { chromium, webkit } from '@playwright/test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../..');
@@ -16,11 +16,13 @@ const previews = args.includes('--previews');
 const setsArg = args.find((a) => a.startsWith('--sets='));
 const PORT = 5178;
 const CLASSIC_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100', 'd100-tens'];   // every type has a pre-branch baseline
-const TYPES = ['d20', 'd6', 'd10', 'd100', 'd100-tens'];                                 // set renders and comparisons
+const TYPES = ['d20', 'd20-20up', 'd6', 'd12', 'd10', 'd100', 'd100-tens'];                // set renders and comparisons
 // 'd100-tens' renders the second die of a d100 pair (faces 00..90).
-const split = (type) => (type.endsWith('-tens') ? [type.slice(0, -5), 'tens'] : [type, 'units']);
+const split = (type) => (type.endsWith('-tens') ? [type.slice(0, -5), 'tens', undefined]
+    : type.endsWith('-20up') ? [type.slice(0, -5), 'units', 20] : [type, 'units', undefined]);
 const CLASSIC_TOLERANCE = 0.005;
 const SET_MIN_DIFF = 0.05;
+const IMAGE_MIN_DIFF = 0.01;   // a set's render once its images load vs its first paint without them
 
 const outDir = resolve(here, 'out');
 const baselineDir = resolve(here, 'baseline');
@@ -70,8 +72,9 @@ try {
     if (setsArg) setIds = ['classic', ...setsArg.slice('--sets='.length).split(',').filter((s) => s && s !== 'classic')];
 
     for (const setId of setIds) {
-        for (const type of (setId === 'classic' ? CLASSIC_TYPES : TYPES)) {
-            const dataUrl = await page.evaluate(([s, t, h]) => window.__renderDie(t, s, h), [setId, ...split(type)]);
+        for (const type of (setId === 'classic' ? [...new Set([...CLASSIC_TYPES, ...TYPES])] : TYPES)) {
+            const [t0, h0, target] = split(type);
+            const dataUrl = await page.evaluate(([s, t, h, tg, k]) => window.__renderDie(t, s, h, { target: tg, key: k }), [setId, t0, h0, target, `${setId}-${type}`]);
             savePng(dataUrl, resolve(outDir, `${setId}-${type}.png`));
             if (previews && setId !== 'classic') {
                 mkdirSync(previewDir, { recursive: true });
@@ -117,6 +120,24 @@ try {
         if (!ok) failures++;
     }
 
+    // Image textures: the fixture registers `fixture-image`, a test-only set whose body and
+    // decoration are data-URL PNGs painted in the page (no network). The first paint, before
+    // the images load, must show the fallback; after preloadSets the die must repaint with the
+    // images (differs from that first paint) and differ from Classic like any other set.
+    // The set is excluded from the catalogue loop above and from --previews.
+    {
+        const unloaded = await page.evaluate(() => window.__renderDie('d20', 'fixture-image', 'units',
+            { preload: false, key: 'fixture-image-d20-unloaded' }));
+        savePng(unloaded, resolve(outDir, 'fixture-image-d20-unloaded.png'));
+        const loaded = await page.evaluate(() => window.__renderDie('d20', 'fixture-image'));
+        savePng(loaded, resolve(outDir, 'fixture-image-d20.png'));
+        const vsClassic = await page.evaluate(([a, b]) => window.__diff(a, b), ['fixture-image-d20', 'classic-d20']);
+        const vsUnloaded = await page.evaluate(([a, b]) => window.__diff(a, b), ['fixture-image-d20', 'fixture-image-d20-unloaded']);
+        const ok = vsClassic >= SET_MIN_DIFF && vsUnloaded >= IMAGE_MIN_DIFF;
+        console.log(`${ok ? 'PASS' : 'FAIL'} fixture-image (image textures) renders: ${(vsClassic * 100).toFixed(1)}% from classic (needs >= ${(SET_MIN_DIFF * 100).toFixed(0)}%), ${(vsUnloaded * 100).toFixed(1)}% from the unloaded first paint (needs >= ${(IMAGE_MIN_DIFF * 100).toFixed(0)}%)`);
+        if (!ok) failures++;
+    }
+
     // The 2x path: a page at devicePixelRatio 2 must get a 2x drawing buffer (the fix for
     // pixelated numerals on Retina displays). The 1x page above cannot see this.
     {
@@ -130,6 +151,51 @@ try {
         console.log(`${ok ? 'PASS' : 'FAIL'} pixel ratio 2: drawing buffer ${buffer[0]}x${buffer[1]} for a ${buffer[2]}px canvas (needs 640x640)`);
         if (!ok) failures++;
         await hidpi.close();
+    }
+
+    // Numeral and decal fit, exhaustively, in Chromium and in WebKit (Safari's engine). Every
+    // numeral of every registered design on every die type and value must keep its ink inside
+    // the face; every d20 decal must stay clear of the edge band.
+    const probeIn = async (label, pg) => {
+        const { glyphs, decals } = await pg.evaluate(() => window.__fitProbe());
+        const over = glyphs.filter((g) => g.outside > 0);
+        const smallest = glyphs.reduce((m, g) => Math.min(m, g.ratio), 1);
+        // One size per die: every numeral of a die (each half of the d100 pair) shares one fitted size.
+        const sizes = new Map();
+        for (const g of glyphs) { const k = `${g.id}|${g.type}|${g.half}`; if (!sizes.has(k)) sizes.set(k, new Set()); sizes.get(k).add(g.ratio.toFixed(4)); }
+        const mixed = [...sizes.entries()].filter(([, s]) => s.size > 1);
+        console.log(`${mixed.length === 0 ? 'PASS' : 'FAIL'} one numeral size per die (${label}): ${sizes.size} dice, ${mixed.length} with mixed sizes`);
+        for (const [k, s] of mixed.slice(0, 8)) console.log(`  ${k}: ${[...s].join(', ')}`);
+        if (mixed.length) failures++;
+        const ok = over.length === 0 && glyphs.length > 0;
+        console.log(`${ok ? 'PASS' : 'FAIL'} numeral fit (${label}): ${glyphs.length} numerals across ${new Set(glyphs.map((g) => g.id)).size} designs, ${over.length} with ink outside their face; smallest at ${(smallest * 100).toFixed(0)}% of design size`);
+        for (const g of over.slice(0, 15)) console.log(`  ${g.id} ${g.type} "${g.text}": ${g.outside} px outside (fitted at ${(g.ratio * 100).toFixed(0)}%)`);
+        if (!ok) failures++;
+        const badDecals = decals.filter((d) => d.outside > 0);
+        const dok = badDecals.length === 0 && decals.length > 0;
+        console.log(`${dok ? 'PASS' : 'FAIL'} d20 decal fit (${label}): ${decals.length} decals, ${badDecals.length} reaching into the edge band`);
+        for (const d of badDecals) console.log(`  ${d.id}: ${d.outside} px`);
+        if (!dok) failures++;
+
+        // Model dice: the shape decides a free roll, a replay shows its targets, labels draw, glow restores.
+        const m = await pg.evaluate(() => window.__modelCheck());
+        const freeOk = m.ok && m.free.every((r) => r.value === r.visible) && m.free[0].value >= 1 && m.free[0].value <= 4 && m.free[1].value >= 1 && m.free[1].value <= 6;
+        const replayOk = m.ok && m.replay[0].visible === 3 && m.replay[1].visible === 5;
+        const drawn = m.ok && m.models.every(Boolean) && m.labels[0] === 12 && m.labels[1] === 6;
+        const mok = freeOk && replayOk && drawn && m.glowRestored;
+        console.log(`${mok ? 'PASS' : 'FAIL'} model dice (${label}): free roll ${JSON.stringify(m.free)}, replay ${JSON.stringify(m.replay)}, labels ${JSON.stringify(m.labels)}, glow restored ${m.glowRestored}`);
+        if (!m.ok) console.log(`  ${m.reason}`);
+        if (!mok) failures++;
+    };
+    await probeIn('chromium', page);
+    {
+        const wk = await webkit.launch({ headless: true });
+        const wpage = await wk.newPage({ viewport: { width: 400, height: 400 } });
+        wpage.on('pageerror', (e) => errors.push(`webkit pageerror: ${e.message}`));
+        await wpage.goto(`http://localhost:${PORT}/`);
+        await wpage.waitForFunction(() => window.__ready === true, null, { timeout: 30000 });
+        await probeIn('webkit', wpage);
+        await wk.close();
     }
 
     if (errors.length) {

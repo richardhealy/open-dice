@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { materialEmissiveIntensity } from './face-painter.js';
 
 /** Metal presets shared by edges, decoration and inlay numerals. */
 export const METALS = Object.freeze({
@@ -62,9 +63,11 @@ export function createFaceMaterial(set, maps) {
     }
     const material = new THREE.MeshPhysicalMaterial(params);
     if (maps.emissive) {
+        // The emissive map carries every glowing layer (numerals, body pattern, decoration,
+        // emblems) painted relative to the brightest; that brightest intensity is the material's.
         material.emissiveMap = maps.emissive;
         material.emissive = new THREE.Color('#ffffff');
-        material.emissiveIntensity = set.numeral.glow ? set.numeral.glow.intensity : 1;
+        material.emissiveIntensity = materialEmissiveIntensity(set);
     } else if (body.glow) {
         material.emissive = new THREE.Color(body.glow.color);
         material.emissiveIntensity = body.glow.intensity;

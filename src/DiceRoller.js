@@ -1,13 +1,17 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { createDie, getDieValue } from './dice.js';
+import { createDie, getDieValue, dieMaterials } from './dice.js';
+import { loadModel, loadSetModels, isModelSettled } from './models/loader.js';
 import { DecalRegistry } from './decal-registry.js';
 import { SoundManager } from './sound-manager.js';
 import { glow, scalePulse, haloRing, runEffectsRules } from './effects/index.js';
 import { resolveSet, CLASSIC } from './sets/index.js';
 import { prepareDiceSets } from './sets/prepare.js';
+import { collectSetImages } from './sets/face-materials.js';
+import { collectSetDecalSources } from './sets/decals.js';
 import { setTextureAnisotropy } from './sets/texture-cache.js';
 import { resolvePixelRatio, clampPixelRatioToBuffer } from './pixel-ratio.js';
+import { GRAVITY_Y, SOLVER_ITERATIONS, CONTACT, applyThrow, isDieSettled, trackRestSteps } from './physics-config.js';
 
 const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
@@ -19,7 +23,6 @@ const COLLIDE_MAX_IMPACT = 12;
 // micro-contacts per second and the playback becomes a buzz instead of distinct clacks.
 const COLLIDE_COOLDOWN_MS = 60;
 
-const SETTLED_THRESHOLD = 0.01;
 
 /**
  * DiceRoller - A 3D dice rolling engine
@@ -156,24 +159,22 @@ export class DiceRoller {
      * @private
      */
     _initPhysics() {
-        this.world = new CANNON.World({ gravity: new CANNON.Vec3(0, -50, 0) });
+        this.world = new CANNON.World({ gravity: new CANNON.Vec3(0, GRAVITY_Y, 0) });
         this.world.broadphase = new CANNON.NaiveBroadphase();
-        this.world.solver.iterations = 30;
+        this.world.solver.iterations = SOLVER_ITERATIONS;
+        trackRestSteps(this.world);
 
         this.diceMaterial = new CANNON.Material('dice');
         const floorPhysicsMaterial = new CANNON.Material('floor');
 
         this.world.addContactMaterial(new CANNON.ContactMaterial(
-            this.diceMaterial, floorPhysicsMaterial,
-            { friction: 0.2, restitution: 0.4 }
+            this.diceMaterial, floorPhysicsMaterial, { ...CONTACT.diceFloor }
         ));
         this.world.addContactMaterial(new CANNON.ContactMaterial(
-            this.diceMaterial, this.diceMaterial,
-            { friction: 0.1, restitution: 0.5 }
+            this.diceMaterial, this.diceMaterial, { ...CONTACT.diceDice }
         ));
         this.world.addContactMaterial(new CANNON.ContactMaterial(
-            this.diceMaterial, new CANNON.Material('wall'),
-            { friction: 0.1, restitution: 0.8 }
+            this.diceMaterial, new CANNON.Material('wall'), { ...CONTACT.diceWall }
         ));
 
         const floorBody = new CANNON.Body({
@@ -304,11 +305,12 @@ export class DiceRoller {
 
         // Classic rolls stay synchronous up to the spawn (so isRolling() is true as soon as
         // roll() returns). Only the first roll that uses a set waits for the font and the
-        // environment map, a few milliseconds once.
+        // environment map, a few milliseconds once, and a roll with a model die waits until
+        // that model has loaded (or failed), so the prediction and the visible die match.
         const generation = ++this._rollGeneration;
         if (this._needsSetAssets(diceConfig)) {
             this._pendingSetRolls++;
-            return this._ensureSetAssets().then(() => {
+            return Promise.all([this._ensureSetAssets(), this._ensureModels(diceConfig)]).then(() => {
                 this._pendingSetRolls--;
                 // A later roll() wiped the table while we waited, or the roller is gone: never
                 // spawn. The promise stays pending, exactly as a wiped batch's promise always has.
@@ -401,21 +403,24 @@ export class DiceRoller {
 
     /**
      * Prepare dice sets ahead of the first roll: loads the numeral font, installs the
-     * environment map, and paints every face of every die type for the listed sets so the
-     * first roll does no painting. Optional; rolls work without it.
+     * environment map, loads every image the listed sets reference (body, normal and
+     * decoration images) and paints every face of every die type for them, so the first
+     * roll does no painting and never shows an image's fallback. Optional; rolls work without it.
      * @param {string[]} ids
      */
     async preloadSets(ids = []) {
         await this._ensureSetAssets();
-        for (const id of ids) {
-            const set = resolveSet(id);
-            if (set.id === CLASSIC) continue;
+        const sets = ids.map((id) => resolveSet(id)).filter((set) => set.id !== CLASSIC);
+        await loadSetModels(sets);
+        const images = [...new Set(sets.flatMap((set) => [...collectSetImages(set), ...collectSetDecalSources(set)]))];
+        if (images.length > 0) await this.decalRegistry.preload(images);
+        for (const set of sets) {
             for (const type of DIE_TYPES) {
                 const halves = type === 'd100' ? [true, false] : [true];
                 for (const isFirst of halves) {
                     const die = createDie(type, true, isFirst, undefined, undefined, this.diceMaterial, null, null,
                         null, null, null, false, null, this.decalRegistry, { set });
-                    die.mesh.material.forEach((m) => m.dispose());
+                    dieMaterials(die).forEach((m) => m.dispose());
                 }
             }
         }
@@ -426,10 +431,30 @@ export class DiceRoller {
         return resolveSet(diceRoll.set || this.defaultSet);
     }
 
-    /** True when this config has a non-classic die and the font/environment are not ready. @private */
+    /** The model entries the dice of this config roll as (a design's model for the die's type). @private */
+    _modelsFor(diceConfig) {
+        const models = [];
+        for (const d of diceConfig) {
+            const set = this._setFor(d);
+            const model = set.models ? set.models[d.dice] : null;
+            if (model) models.push(model);
+        }
+        return models;
+    }
+
+    /**
+     * True when this config has a non-classic die and the font/environment are not ready, or
+     * a model die whose model has not finished loading. @private
+     */
     _needsSetAssets(diceConfig) {
+        if (this._modelsFor(diceConfig).some((m) => !isModelSettled(m.src))) return true;
         if (this._setAssetsReady) return false;
         return diceConfig.some((d) => this._setFor(d).id !== CLASSIC);
+    }
+
+    /** Load the models this config's dice roll as; resolves when each has loaded or failed. @private */
+    _ensureModels(diceConfig) {
+        return Promise.all(this._modelsFor(diceConfig).map((m) => loadModel(m.src)));
     }
 
     /** Load the numeral font and install the environment map, once per roller. @private */
@@ -463,7 +488,7 @@ export class DiceRoller {
         // for spectator-side replay, where rolls arrive over the wire and
         // should stack visually rather than crash through each other.
         await this._waitForAllBatchesResolved();
-        if (this._needsSetAssets(diceConfig)) await this._ensureSetAssets();
+        if (this._needsSetAssets(diceConfig)) await Promise.all([this._ensureSetAssets(), this._ensureModels(diceConfig)]);
         if (this._destroyed) return new Promise(() => {});
 
         const { closestIndexes, seeds } = this._preSimulateInLiveWorld(diceConfig);
@@ -581,66 +606,72 @@ export class DiceRoller {
 
         const dice = [];
         const seeds = [];
-        diceConfig.forEach((diceRoll) => {
-            const repeatCount = diceRoll.dice === 'd100' ? 2 : 1;
-            for (let i = 0; i < repeatCount; i++) {
-                // Spawn into this.world without adding to the scene — these
-                // are prediction-only bodies; nothing should be rendered.
-                const die = createDie(
-                    diceRoll.dice, false, i === 0,
-                    diceRoll.rolled, null,
-                    this.diceMaterial, null, this.world,
-                    diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
-                    diceRoll.isSecret
-                );
-                const seed = this._generateRandomSeed();
-                seeds.push(seed);
-                if (!die) {
-                    dice.push(null);
-                    continue;
+        // Whatever happens below, prediction bodies leave the world and existing dice go back
+        // where they were: a die that fails to build must not leave an invisible body behind.
+        try {
+            diceConfig.forEach((diceRoll) => {
+                const repeatCount = diceRoll.dice === 'd100' ? 2 : 1;
+                for (let i = 0; i < repeatCount; i++) {
+                    // Spawn into this.world without adding to the scene — these
+                    // are prediction-only bodies; nothing should be rendered.
+                    // The die's design rides along so a model die predicts with its model's hull,
+                    // the very body the visible die will have.
+                    const die = createDie(
+                        diceRoll.dice, false, i === 0,
+                        diceRoll.rolled, null,
+                        this.diceMaterial, null, this.world,
+                        diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
+                        diceRoll.isSecret, null, null,
+                        { set: this._setFor(diceRoll) }
+                    );
+                    const seed = this._generateRandomSeed();
+                    seeds.push(seed);
+                    if (!die) {
+                        dice.push(null);
+                        continue;
+                    }
+                    die.isFirst = !(i > 0 && diceRoll.dice === 'd100');
+                    this._applyDiePhysics(die, seed);
+                    dice.push(die);
                 }
-                die.isFirst = !(i > 0 && diceRoll.dice === 'd100');
-                this._applyDiePhysics(die, seed);
-                dice.push(die);
+            });
+
+            const maxSteps = 5000;
+            const minSteps = 60;
+            for (let step = 0; step < maxSteps; step++) {
+                this.world.step(1 / 60);
+                if (step < minSteps) continue;
+                const allSettled = dice.every(d => !d || this._isBodySettled(d.body));
+                if (allSettled) break;
             }
-        });
 
-        const maxSteps = 5000;
-        const minSteps = 60;
-        for (let step = 0; step < maxSteps; step++) {
-            this.world.step(1 / 60);
-            if (step < minSteps) continue;
-            const allSettled = dice.every(d => !d || this._isBodySettled(d.body));
-            if (allSettled) break;
+            const closestIndexes = dice.map(d => {
+                if (!d) return null;
+                d.mesh.quaternion.copy(d.body.quaternion);
+                return getDieValue(d, this.up)[1];
+            });
+            return { closestIndexes, seeds };
+        } finally {
+            // Remove the prediction bodies from the world so they don't
+            // collide with the visible dice we're about to spawn with the
+            // same seeds.
+            for (const d of dice) {
+                if (d && d.body) this.world.removeBody(d.body);
+            }
+
+            // Restore existing dice to their pre-prediction state. They'll
+            // experience the same collisions again when the visible new dice
+            // are spawned with the same seeds, so they end up in the same
+            // final state — preserving determinism for both batches.
+            for (const snap of snapshots) {
+                snap.die.body.position.copy(snap.position);
+                snap.die.body.quaternion.copy(snap.quaternion);
+                snap.die.body.velocity.copy(snap.velocity);
+                snap.die.body.angularVelocity.copy(snap.angularVelocity);
+                snap.die.body.force.setZero();
+                snap.die.body.torque.setZero();
+            }
         }
-
-        const closestIndexes = dice.map(d => {
-            if (!d) return null;
-            d.mesh.quaternion.copy(d.body.quaternion);
-            return getDieValue(d, this.up)[1];
-        });
-
-        // Remove the prediction bodies from the world so they don't
-        // collide with the visible dice we're about to spawn with the
-        // same seeds.
-        for (const d of dice) {
-            if (d && d.body) this.world.removeBody(d.body);
-        }
-
-        // Restore existing dice to their pre-prediction state. They'll
-        // experience the same collisions again when the visible new dice
-        // are spawned with the same seeds, so they end up in the same
-        // final state — preserving determinism for both batches.
-        for (const snap of snapshots) {
-            snap.die.body.position.copy(snap.position);
-            snap.die.body.quaternion.copy(snap.quaternion);
-            snap.die.body.velocity.copy(snap.velocity);
-            snap.die.body.angularVelocity.copy(snap.angularVelocity);
-            snap.die.body.force.setZero();
-            snap.die.body.torque.setZero();
-        }
-
-        return { closestIndexes, seeds };
     }
 
     /**
@@ -677,8 +708,7 @@ export class DiceRoller {
 
     /** @private */
     _isBodySettled(body) {
-        return body.velocity.lengthSquared() < SETTLED_THRESHOLD &&
-               body.angularVelocity.lengthSquared() < SETTLED_THRESHOLD;
+        return isDieSettled(body);
     }
 
     /**
@@ -687,34 +717,9 @@ export class DiceRoller {
      * @private
      */
     _applyDiePhysics(die, rand) {
-        const margin = 2;
-        const frustumSize = 18;
-        const aspect = this.width / this.height;
-        const leftBound = -frustumSize * aspect / 2;
-
-        const xPos = leftBound + margin + (rand.xPos * 4);
-        const yPos = 4 + rand.yPos * 4;
-        const zPos = (rand.zPos - 0.5) * (frustumSize * 0.9);
-        die.body.position.set(xPos, yPos, zPos);
+        applyThrow(die.body, rand, { aspect: this.width / this.height, throwSpeed: this.throwSpeed, throwSpin: this.throwSpin });
         die.mesh.position.copy(die.body.position);
-
-        die.body.quaternion.setFromAxisAngle(
-            new CANNON.Vec3(rand.rotAxis[0], rand.rotAxis[1], rand.rotAxis[2]).unit(),
-            rand.rotAngle * Math.PI * 2
-        );
         die.mesh.quaternion.copy(die.body.quaternion);
-
-        die.body.velocity.set(
-            (0.8 + 0.8 * rand.vel[0]) * this.throwSpeed,
-            (rand.vel[1] * 0.2) * this.throwSpeed * 0.5,
-            (rand.vel[2] - 0.5) * this.throwSpeed
-        );
-
-        die.body.angularVelocity.set(
-            (rand.angVel[0] - 0.5) * this.throwSpin * 1.5,
-            (rand.angVel[1] - 0.5) * this.throwSpin * 1.5,
-            (rand.angVel[2] - 0.5) * this.throwSpin * 1.5
-        );
     }
 
     /**
@@ -770,15 +775,10 @@ export class DiceRoller {
                 if (this.floor) this.floor.material.opacity = 0.5 * (1 - easedProgress);
 
                 diceToFade.forEach(d => {
-                    if (Array.isArray(d.mesh.material)) {
-                        d.mesh.material.forEach(m => {
-                            m.transparent = true;
-                            m.opacity = opacity;
-                        });
-                    } else {
-                        d.mesh.material.transparent = true;
-                        d.mesh.material.opacity = opacity;
-                    }
+                    dieMaterials(d).forEach(m => {
+                        m.transparent = true;
+                        m.opacity = opacity;
+                    });
                 });
 
                 if (progress < 1) {

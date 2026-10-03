@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { METALS, FAMILY_DEFAULTS, createEdgeMaterial, createFaceMaterial } from '../../src/sets/materials.js';
-import { GEM, INLAY, GLOW, NO_EDGE } from './helpers/sets.js';
+import { GEM, INLAY, GLOW, NO_EDGE, CIRCUIT, VINES, GLOW_ALL } from './helpers/sets.js';
 
 const tex = () => new THREE.Texture();
 
@@ -64,6 +64,18 @@ describe('material recipes', () => {
         expect(m.emissiveMap).toBe(emissive);
         expect(m.emissive.getHexString()).toBe('ffffff');
         expect(m.emissiveIntensity).toBe(1.6);
+    });
+
+    it('the emissive intensity is the brightest glow in the set: numerals, body or decoration (not numeral.glow alone)', () => {
+        const emissive = tex();
+        expect(createFaceMaterial(GLOW_ALL, { map: tex(), emissive }).emissiveIntensity).toBe(1.6);
+        const bodyOnly = { ...CIRCUIT, numeral: { ...CIRCUIT.numeral, style: 'flat', glow: null } };
+        expect(createFaceMaterial(bodyOnly, { map: tex(), emissive }).emissiveIntensity).toBe(0.35);
+        const decorOnly = { ...VINES, numeral: { ...VINES.numeral, style: 'flat', glow: null } };
+        expect(createFaceMaterial(decorOnly, { map: tex(), emissive }).emissiveIntensity).toBe(0.6);
+        const nothing = createFaceMaterial(GEM, { map: tex(), emissive });
+        expect(nothing.emissiveIntensity).toBe(1);                                   // nothing glows: today's scale
+        expect(nothing.emissive.getHexString()).toBe('ffffff');
     });
 
     it('a normal map is attached with unit normalScale', () => {

@@ -20,9 +20,10 @@ describe('noise', () => {
     });
 
     it('every pattern kind returns values in 0..1 and is not constant', () => {
-        expect(PATTERN_KINDS).toEqual(['noise', 'marble', 'veins', 'scales']);
+        expect(PATTERN_KINDS).toEqual(['noise', 'marble', 'veins', 'scales', 'pour', 'circuit', 'felt']);
         const seed = hashSeed('p');
-        for (const kind of PATTERN_KINDS) {
+        // pour, circuit and felt produce colour through patterns.js; only the scalar kinds go through pattern().
+        for (const kind of ['noise', 'marble', 'veins', 'scales']) {
             const values = new Set();
             for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
                 const v = pattern(kind, seed, x / 16, y / 16, 4);
