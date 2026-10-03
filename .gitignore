@@ -10,3 +10,4 @@ dist
 # Specs and plans live in docs/ and are tracked despite the *.md rule above.
 !docs/**/*.md
 test/render/out/
+open-dice-dnd-*.tgz
