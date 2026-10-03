@@ -59,7 +59,10 @@ export function modelTemplate(model) {
     const scene = loadedModel(model.src);
     if (!scene) return null;
     let perScene = templates.get(scene);
-    if (!perScene) { perScene = new Map(); templates.set(scene, perScene); }
+    // Weakly keyed by entry: registerDiceSet(…, { replace: true }) leaves the old entries
+    // behind, and an editor re-registering a design on every change would otherwise keep a
+    // template, and every label decal cut from it, for each edit.
+    if (!perScene) { perScene = new WeakMap(); templates.set(scene, perScene); }
     let template = perScene.get(model);
     if (!template) {
         const placed = new THREE.Group();
