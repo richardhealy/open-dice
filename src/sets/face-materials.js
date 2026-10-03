@@ -104,7 +104,7 @@ function faceTextures(set, type, face, isSecret, decals, decalRegistry, textOffs
         textures[mode] = getOrCreateTexture(cacheKey([set.id, type, mode, fk]), () => {
             const result = paintFace({ set, type, face, isSecret, decals, decalRegistry, textOffsetY, mode });
             canvases[mode] = result.canvas;
-            result.pendingDecals.forEach((src) => pending.add(src));
+            result.pendingImages.forEach((src) => pending.add(src));
             return canvasTexture(result.canvas);
         });
     }

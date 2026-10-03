@@ -18,3 +18,19 @@ export function shade(hex, amount) {
     const rgb = hexToRgb(hex);
     return rgbToHex(rgb.map((c) => (amount >= 0 ? c + (255 - c) * amount : c * (1 + amount))));
 }
+
+/** Packed metal-roughness colour: three reads roughness from G and metalness from B. */
+export function mrColor(roughness, metalness) {
+    return `rgb(0, ${Math.round(roughness * 255)}, ${Math.round(metalness * 255)})`;
+}
+
+/**
+ * A colour dimmed toward black by `ratio` (0..1), for layers that share one material
+ * intensity. At 1 or above the input is returned verbatim, so the brightest layer keeps the
+ * exact string a set declares.
+ */
+export function scaleColor(hex, ratio) {
+    if (!(ratio < 1)) return hex;
+    const r = Math.max(0, ratio);
+    return rgbToHex(hexToRgb(hex).map((c) => c * r));
+}
