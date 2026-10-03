@@ -15,7 +15,7 @@ A 3D physics-based dice rolling engine built with Three.js and Cannon-es. Design
 - 🧠 Declarative rule-based effect composition (match by type/value, play combos)
 - 🔒 Secret roll mode
 - 🌈 Per-die colors (body, text, background)
-- 💎 Dice sets — ten built-in looks (gem, glass, hide, marble pour, circuit, knotwork, felt) plus the classic default; register your own as data with procedural patterns, decoration layers, face emblems and image textures
+- 💎 Dice designs — data-defined premium looks your app registers (the library ships none; ten examples in `examples/designs`): procedural patterns, decoration layers, decals, emblems and image textures, with numerals fitted to every face
 - 📦 Lightweight, modular, no UI framework lock-in
 
 ---
@@ -154,52 +154,42 @@ Keys are face *values* (as strings), not face indices. Decals follow the target-
 
 ---
 
-## 💎 Dice sets
+## 💎 Dice designs
 
-A dice set is a named look: body finish, edge metal, numeral style and optional face decoration, rendered with physically based materials and reflections. Ten sets ship with the library; `classic` is the original look and stays the default.
-
-| id | look |
-|---|---|
-| `classic` | The original flat-colour dice. Honours `diceColor`, `textColor`, `backgroundColor`. |
-| `ruby-jewel` | Translucent ruby, gold filigree, engraved serif numerals. |
-| `emerald-jewel` | Emerald variant of Ruby Jewel. |
-| `sapphire-jewel` | Sapphire variant of Ruby Jewel. |
-| `obsidian-gold` | Black glass, gold inlaid numerals, gold edges. |
-| `ember-dragonhide` | Dark scaled hide, iron edges, glowing ember numerals. |
-| `tidepool-pour` | Poured marble in navy, cream, gold and rust with cream lacing, every face different; engraved gold numerals, gold frame and edges. |
-| `witchlight-vines` | Deep teal body wreathed in glowing pale-mint vines, mint glow numerals, silver edges. |
-| `mainframe` | Near-black green body with glowing circuit traces, green monospace glow numerals, iron edges. |
-| `rosewood-knotwork` | Rosewood pour with a gold knotwork border, engraved cream numerals, a gold sunburst emblem on the 20, gold edges. |
-| `rose-felt` | Dusty pink felt, matte with no edge metal, darker rose corner ornaments, engraved plum numerals. |
-
-![Ruby Jewel d20](docs/sets/ruby-jewel-d20.png) ![Obsidian & Gold d20](docs/sets/obsidian-gold-d20.png) ![Ember Dragonhide d20](docs/sets/ember-dragonhide-d20.png)
-
-![Tidepool Pour d20](docs/sets/tidepool-pour-d20.png) ![Witchlight Vines d20](docs/sets/witchlight-vines-d20.png) ![Mainframe d20](docs/sets/mainframe-d20.png) ![Rosewood Knotwork d20](docs/sets/rosewood-knotwork-d20.png) ![Rose Felt d20](docs/sets/rose-felt-d20.png)
+A dice design is a named look: body finish, edge metal, numeral style, face decoration and decals, described as plain JSON and rendered with physically based materials and reflections. **The library ships no designs.** It renders `classic`, the original flat-colour dice, plus whatever designs your application registers. Your app owns its catalogue: keep designs wherever suits it (a database, a CMS, a static file), fetch them, and register them before rolling. RollQuest, for example, sells designs in its marketplace and registers the ones a table needs.
 
 ```js
-import { DiceRoller, listDiceSets, registerDiceSet } from 'open-dice-dnd';
+import { DiceRoller, registerDiceSet, unregisterDiceSet, listDiceSets } from 'open-dice-dnd';
 
-const roller = new DiceRoller({ container, set: 'ruby-jewel' });   // default for every die
-await roller.preloadSets(['ruby-jewel', 'obsidian-gold']);          // optional: paint ahead of the first roll
+// Your catalogue: plain JSON from your own API.
+const designs = await fetch('/api/dice-designs').then((r) => r.json());
+for (const design of designs) registerDiceSet(design);
+
+const roller = new DiceRoller({ container, set: 'ruby-jewel' });   // default design for every die
+await roller.preloadSets(['ruby-jewel']);                           // optional: paint ahead of the first roll
 
 await roller.roll([
-    { dice: 'd20', rolled: 18, set: 'emerald-jewel' },               // per-die override
-    { dice: 'd6',  rolled: 4 },                                      // roller default
+    { dice: 'd20', rolled: 18, set: 'emerald-jewel' },               // per-die design
+    { dice: 'd6',  rolled: 4 },                                      // the roller default
+    { dice: 'd8',  rolled: 2, set: 'classic', diceColor: 0x4ade80 }, // classic honours colours
 ]);
 
-roller.setDefaultSet('obsidian-gold');                              // change at runtime
-listDiceSets();   // [{ id, name, family, swatch }, ...] for a picker
+registerDiceSet(updatedDesign, { replace: true });                  // swap a definition; its textures repaint
+unregisterDiceSet('ruby-jewel');                                     // withdraw one
+listDiceSets();                                                      // [{ id, name, family, swatch }] for a picker
+roller.setDefaultSet(null);                                          // back to classic for later rolls
 ```
 
 Rules:
 
-- Sets other than `classic` ignore `diceColor`, `textColor` and `backgroundColor`; their palette is the design.
-- `decals` and `isSecret` work with every set.
-- An unknown set id logs one warning and renders `classic`, so a stale id can never break a roll.
-- The first roll that uses a set waits a few milliseconds for the numeral font and the reflection map. `preloadSets()` moves that cost to page load.
-- Using `createDie(type, ..., { set })` directly, without a roller (for example to draw a picker preview), paints faces as soon as it is called. Await `prepareDiceSets({ renderer, scene })` first so the numeral font and the reflection environment are ready; textures painted before the font loads use a system serif and are cached separately.
+- Designs ignore `diceColor`, `textColor` and `backgroundColor`: the palette is the design. `classic` honours them, so "standard dice in my colours" is simply `set: 'classic'` (or no set at all).
+- An unknown design id logs one warning and renders `classic`, so a spectator without that design registered, or a stale id, can never break a roll.
+- `registerDiceSet` validates the definition and throws naming the failing field. `classic` is reserved, and an id already registered throws unless you pass `{ replace: true }`.
+- Per-die `decals` and `isSecret` work with every design.
+- The first roll with a design waits a few milliseconds for the numeral fonts and the reflection map; `preloadSets()` moves that cost to page load. To draw with `createDie(type, ..., { set })` without a roller (a picker preview, say), first await `prepareDiceSets({ renderer, scene, decalRegistry, sets })`.
+- **Numerals fit their faces.** A design's numeral shrinks, never below half its size, until its ink clears the face edge and any decoration band. Two-digit faces (the d100 tens, a d12's 10 to 12, a d20's 10 to 20) and wide serif digits therefore stay inside their faces. Classic dice are unchanged.
 
-### Custom sets
+### A minimal design
 
 ```js
 registerDiceSet({
@@ -210,19 +200,58 @@ registerDiceSet({
     edge: { metal: 'bronze' },                         // gold | silver | bronze | iron | none
     numeral: { color: '#1A1208', style: 'engraved' },  // flat | engraved | inlay | glow
     decor: { art: 'filigree', metal: 'bronze', relief: 0.5 },
+    decals: { d20: { '20': { src: '/art/house-crest.svg', scale: 0.8 } } },
     swatch: ['#8C6A2F', '#B07A3A'],
 });
 ```
 
-Every field a built-in set uses is available; see `src/sets/builtin/` for the ten shipped definitions and `src/sets/validate.js` for the accepted ranges. Textures are 256 px canvases painted once per set, die type and face value, then cached; `clearDiceSetCaches()` frees them.
+`src/sets/validate.js` lists every field and its accepted range. Textures are 256 px canvases painted once per design, die type and face value, then cached; `clearDiceSetCaches()` frees them all and `unregisterDiceSet()` frees one design's.
+
+### Example designs
+
+Ten complete designs live in [`examples/designs/`](examples/designs/). The demo and the tests register them the way an app would; they are not part of the published package. Copy them as a starting point.
+
+| id | look |
+|---|---|
+| `ruby-jewel` | Translucent ruby, gold filigree, engraved cream numerals, a jewelled crown on the 20. |
+| `emerald-jewel`, `sapphire-jewel` | Emerald and sapphire variants of Ruby Jewel. |
+| `obsidian-gold` | Black glass, gilded numerals, gold edges, a gold compass star on the 20. |
+| `ember-dragonhide` | Dark scaled hide, iron edges, glowing ember numerals. |
+| `tidepool-pour` | Poured marble in navy, cream, gold and rust, every face different; outlined gold numerals, gold frame, a scallop shell on the 20. |
+| `witchlight-vines` | Deep teal with glowing pale-mint vines, mint glow numerals, silver edges. |
+| `mainframe` | Near-black green with softly glowing circuit traces, monospace glow numerals, iron edges. |
+| `rosewood-knotwork` | Rosewood pour, gold knotwork border, engraved cream numerals, a gold sunburst on the 20. |
+| `rose-felt` | Dusty pink felt, matte, darker rose corner florets, engraved plum numerals, a rose on the 20. |
+
+![Ruby Jewel d20](docs/sets/ruby-jewel-d20.png) ![Obsidian & Gold d20](docs/sets/obsidian-gold-d20.png) ![Ember Dragonhide d20](docs/sets/ember-dragonhide-d20.png)
+
+![Tidepool Pour d20](docs/sets/tidepool-pour-d20.png) ![Witchlight Vines d20](docs/sets/witchlight-vines-d20.png) ![Mainframe d20](docs/sets/mainframe-d20.png) ![Rosewood Knotwork d20](docs/sets/rosewood-knotwork-d20.png) ![Rose Felt d20](docs/sets/rose-felt-d20.png)
+
+### Design decals
+
+A design can mark chosen faces with images, using exactly the library's decal options `{ src, scale, offsetX, offsetY, rotation }` (see [Decals](#️-decals)). They are keyed by die type, then by face value:
+
+```js
+decals: {
+    d20: { '20': { src: 'data:image/svg+xml,…', scale: 0.79 } },   // a crown on the natural 20
+}
+```
+
+They travel through the same pipeline as per-die decals. The roller's `DecalRegistry` loads them, and `preloadSets()` includes them. They replace the numeral on that face, and secret rolls hide them. Keying by die type keeps a d20's "20" mark off the d100's tens face. A die's own `decals` option overrides the design's decal for the same value, and `null` switches it off:
+
+```js
+await roller.roll([{ dice: 'd20', rolled: 20, set: 'ruby-jewel', decals: { '20': null } }]);   // the numeral, not the crown
+```
+
+A decal draws into a square 0.7 of the face texture wide, times `scale`, centred on the face. A d20 face is a triangle, so keep the art compact. The examples use 0.78 to 0.86 for art that fills its view box, and more for small art. A data URL keeps a design self-contained; SVG data URLs draw into the canvas without tainting it in Chromium, WebKit and Firefox.
 
 ### Patterns
 
-`body.texture` paints a procedural pattern under everything else. Seven kinds are available; the first four are unchanged from 1.4.
+`body.texture` paints a procedural pattern under everything else. Seven kinds are available.
 
 | kind | fields | look |
 |---|---|---|
-| `noise`, `marble`, `veins`, `scales` | `color2` (required), `contrast` 0..1 (0.3), `scale` 1..12 (3) | The body colour blended toward `color2` by a noise, marble, vein or scale field, as in 1.4. |
+| `noise`, `marble`, `veins`, `scales` | `color2` (required), `contrast` 0..1 (0.3), `scale` 1..12 (3) | The body colour blended toward `color2` by a noise, marble, vein or scale field. |
 | `pour` | `palette` of 2 to 6 hex colours, `warp` 0..8 (4), `scale` 1..12 (3), optional `lacing: { color, width 0.005..0.1 (0.02) }` | Acrylic-pour swirls that run through the whole palette. `lacing` adds thin bright veins between the colours. |
 | `circuit` | `color2` (trace colour, required), `density` 5..120 (40), `grid` 6..24 (12), `contrast` 0..1 (0.6) | Printed-circuit traces with pads at their ends on a lattice. The traces are also the glow mask for `body.emissive`. |
 | `felt` | `color2` (grain colour, default: the body colour shaded 35 % darker), `contrast` 0..1 (0.3) | Fine matte grain. Pair it with `vignette` around 0.45 and `roughness: 1` for cloth. |
@@ -240,7 +269,7 @@ Two body fields finish the look:
 
 ```js
 decor: [
-    { art: 'frame', metal: 'silver', relief: 0.5 },                       // metal art, as in 1.4
+    { art: 'frame', metal: 'silver', relief: 0.5 },                       // metal art
     { art: 'vines', color: '#CDEFEB', relief: 0.3, glow: 0.6 },           // flat colour; glow adds it to the emissive map
     { image: { src: '/art/filigree.png' }, metal: 'gold', relief: 0.6 },  // a PNG with alpha, painted as metal (or with color)
 ]
@@ -250,13 +279,13 @@ Each layer has exactly one of `metal` (gold | silver | bronze | iron) or `color`
 
 | art | shapes | content |
 |---|---|---|
-| `filigree` | all but kite | Edge bands, corner knots, vines and berries (the 1.4 art). |
+| `filigree` | all but kite | Edge bands, corner knots, vines and berries. |
 | `frame` | all but kite | The filigree's edge bands and corner knots alone, for a plain border or to stack another art inside. |
 | `corners` | all but kite | A floret at each corner: three petal discs and a centre dot. |
 | `knotwork` | tri, square, pent | A two-strand braid along each edge, the strands crossing, with corner knots. |
 | `vines` | all but kite | A vine from each edge midpoint toward the centre with two levels of branches and leaf tips, seeded per shape. |
 
-Kites (d10 and d100) get no built-in decoration: their textured face is only the upper triangle of the kite. A 1.4 definition with a single `decor` object still validates and paints exactly as before.
+Kites (d10 and d100) get no built-in decoration: their textured face is only the upper triangle of the kite. `decor` may also be a single layer object.
 
 ### Face emblems
 
@@ -269,11 +298,11 @@ emblems: {
 }
 ```
 
-Keys are face values as strings, looked up per corner on the d4. The d100 pair never carries an emblem: a percentile roll is read from two faces, and an emblem on either would hide a digit (a decal can still replace a face there, per roll). Built-in emblems: `sunburst`, `star`, `crown`, `skull`. An emblem takes `metal` or `color` (default: the numeral colour), `scale` 0.3..1.2 (0.8) and `relief` 0..1 (0.5), and is painted into every map the numeral would have used; a face that carries an emblem gets its own normal map, so `relief` raises it like a decoration layer. A decal on the same value wins over the emblem: the host's explicit icon beats the set's.
+Keys are face values as strings, looked up per corner on the d4. The d100 pair never carries an emblem: a percentile roll is read from two faces, and an emblem on either would hide a digit (a decal can still replace a face there, per roll). Built-in emblems: `sunburst`, `star`, `crown`, `skull`. An emblem takes `metal` or `color` (default: the numeral colour), `scale` 0.3..1.2 (0.8) and `relief` 0..1 (0.5), and is painted into every map the numeral would have used; a face that carries an emblem gets its own normal map, so `relief` raises it like a decoration layer. A decal on the same value wins over the emblem. For a single mark on a face, a design decal is usually simpler: it is just an image.
 
 ### Image textures
 
-Any look you can paint can be a set:
+Any look you can paint can be a design:
 
 ```js
 registerDiceSet({
@@ -329,7 +358,7 @@ Each path is `{ d, stroke, fill, rule? }`. `d` may use only the SVG commands `M 
 
 ### Fonts
 
-Two numeral families are embedded, subset to the digits and `?` under the SIL Open Font License: `OpenDiceNumerals`, the engraved serif every set used until now (the default), and `OpenDiceMono`, a monospace for circuit and console looks. `numeral.font` takes either name, or any other family name verbatim for the browser to resolve (loading that font is up to you). `ensureNumeralFont()` loads both embedded families; faces painted before they load use the system fallback and are cached separately.
+Two numeral families are embedded, subset to the digits and `?` under the SIL Open Font License: `OpenDiceNumerals`, an engraved serif (the default), and `OpenDiceMono`, a monospace for circuit and console looks. `numeral.font` takes either name, or any other family name verbatim for the browser to resolve (loading that font is up to you). `ensureNumeralFont()` loads both embedded families; faces painted before they load use the system fallback and are cached separately.
 
 ---
 
@@ -589,6 +618,16 @@ npm run build
 ---
 
 ## 📝 Changelog
+
+### [1.6.0] - 2026-10-03
+
+The first published release with dice designs. 1.4.0 and 1.5.0 below were never published; their entries describe the steps along the way.
+
+- The library ships no designs. Apps register their own with `registerDiceSet(definition, { replace })`; `unregisterDiceSet(id)` withdraws one and frees its textures. The ten example designs moved to `examples/designs/` for the demo and tests.
+- Design decals: `decals: { [dieType]: { [faceValue]: { src, scale, offsetX, offsetY, rotation } } }`, the library's existing decal options, merged under each die's own `decals` (the die's entry wins, `null` switches one off).
+- Numerals fit their faces: two-digit faces and serif digits shrink as needed, never below half size, to stay inside the face and clear any decoration band. Checked for every numeral of every example design on every die type in Chromium and WebKit.
+- Draws at the device pixel ratio (capped at 2, `pixelRatio` option) so numerals are crisp on Retina screens; the animation loop idles when nothing moves.
+- Classic dice are unchanged.
 
 ### [1.5.0] - 2026-10-03
 
