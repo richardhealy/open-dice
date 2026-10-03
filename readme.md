@@ -85,7 +85,7 @@ new DiceRoller({
 | `isRolling()` | `boolean` | True if any batch is still unresolved |
 | `setEffectRules(rules)` | `void` | Replace settled-effect rules at runtime |
 | `preloadDecals(srcs)` | `Promise` | Cache decal images before first roll |
-| `preloadSets(ids)` | `Promise<void>` | Load fonts, reflections, images and decals of these designs and paint their faces ahead of the first roll |
+| `preloadSets(ids)` | `Promise<void>` | Load fonts, reflections, images, decals and models of these designs and paint their faces ahead of the first roll |
 | `setDefaultSet(id)` | `void` | Default design for later rolls; `null` returns to classic |
 | `setThrowSpeed(n)` | `void` | |
 | `setThrowSpin(n)` | `void` | |
@@ -130,7 +130,7 @@ Each entry in the `diceConfig` array passed to `roll()` / `addDice()`:
 }
 ```
 
-**Authoritative vs. visible**: the engine pre-simulates each roll in an isolated physics world to determine which face will land up, then paints the target value onto that face. The `total` is always the predetermined sum. If a die gets bumped (e.g. by `addDice()`) and lands on a different face, that's reported as a *variance* but the total is unchanged. This keeps results consistent across clients with different screen aspect ratios.
+**Authoritative vs. visible**: the engine pre-simulates each roll in the live physics world, with the seeds the visible dice then reuse, to determine which face will land up, then paints the target value onto that face. The `total` is always the predetermined sum. If a die gets bumped (e.g. by `addDice()`) and lands on a different face, that's reported as a *variance* but the total is unchanged. This keeps results consistent across clients with different screen aspect ratios.
 
 ---
 
@@ -190,7 +190,7 @@ Rules:
 - Designs ignore `diceColor`, `textColor` and `backgroundColor`: the palette is the design. `classic` honours them, so "standard dice in my colours" is `set: 'classic'` on the die (or no set at all when the roller has no default design: a die without `set` takes the roller's default).
 - An unknown design id logs one warning and renders `classic`, so a spectator without that design registered, or a stale id, can never break a roll.
 - `registerDiceSet` validates the definition and throws naming the failing field. `classic` is reserved, and an id already registered throws unless you pass `{ replace: true }`.
-- Per-die `decals` and `isSecret` work with every design.
+- Per-die `decals` work with every design's procedural dice, and `isSecret` with every die: a model die's own labels show `?`, though numbers painted into a model's texture stay visible.
 - The first roll with a design waits a few milliseconds for the numeral fonts and the reflection map; `preloadSets()` moves that cost to page load.
 - To draw a design without a roller (a picker preview, say), prepare it, then pass the same `DecalRegistry` to `createDie` so the design's decals and images paint:
 
@@ -386,6 +386,7 @@ import { createGltfModelLoader } from 'open-dice-dnd/gltf';
 
 const loadGltf = createGltfModelLoader();
 setModelLoader(loadGltf);                          // the library fetches nothing itself
+const roller = new DiceRoller({ container });
 
 // Once per model, in your authoring tool: analyse the file and store the result with the design.
 const scene = await loadGltf('/dice-models/potion-of-healing-d4.glb');
@@ -404,7 +405,7 @@ const total = await roller.roll([{ dice: 'd4', set: 'potion-of-healing' }]);
 
 ### Results come from the physics
 
-The roll prediction runs in the live world with the very body the visible die uses, so a model die without `rolled` lands on the face the prediction found and reports it: `results[i].value`, `visible` and the `total` all agree. To show the same roll on other screens, send the reported values and roll them there with `rolled`: as with classic dice, the labels are permuted so the face that lands shows the value (the motion differs per screen; the numbers never do). The roller's report is the authority; a spectator's screen never decides.
+The roll prediction runs in the live world with the very body the visible die uses, so a model die without `rolled` lands on the face the prediction found and reports it: `results[i].value`, `visible` and the `total` all agree. To show the same roll on other screens, send the reported values and roll them there with `rolled`: as with classic dice, the labels are permuted so the face that lands shows the value (the motion differs per screen; the numbers never do). A model d10 reads 0 to 9 like the classic d10, and takes `rolled: 10` as its 0 face, read back as 10. The roller's report is the authority; a spectator's screen never decides.
 
 A model die settles only after it has stayed at rest for ten physics steps in a row: an irregular shape rocking on an edge passes through rest at the top of every rock, and settling there would freeze it tilted. Classic dice settle as before.
 
@@ -430,10 +431,10 @@ Turns any loaded model into a `models` entry: it centres the model's hull on its
 | `type` | required | `'d4'` to `'d20'` |
 | `throws` | `300` | More throws, steadier odds; a few hundred take about a second. |
 | `seed` | `1` | Same model, same seed, same result. |
-| `maxHullPoints` | `48` | Physics cost grows with hull points. |
+| `maxHullPoints` | `48` | 4 to 128. Physics cost grows with hull points; the simplified hull sits just inside the model's own. |
 | `onProgress` | none | Called with a fraction from 0 to 1. |
 
-It resolves `{ ok: true, model, report }`, or `{ ok: false, reason }` when the shape rests in fewer ways than the die has sides or has no clear resting faces (a ball). `report` holds `distribution` (share per value), `chiSquare`, `maxDeviation`, `unusedShare` (throws that rested off the chosen faces and read as the nearest one), `restingFaces`, `coverage` and readable `warnings`. `remapModelValues(model, { 4: 1, 1: 4 })` swaps values on faces and labels together.
+It resolves `{ ok: true, model, report }`, or `{ ok: false, reason }` when the shape rests in fewer ways than the die has sides, has no clear resting faces (a ball), or comes out as an entry `registerDiceSet` would refuse. `report` holds `distribution` (share per value), `chiSquare`, `maxDeviation`, `unusedShare` (throws that rested off the chosen faces and read as the nearest one), `restingFaces`, `coverage` and readable `warnings`. `remapModelValues(model, { 4: 1, 1: 4 })` swaps values on faces and labels together.
 
 ### Exact die shapes
 
@@ -443,8 +444,8 @@ When the geometry must stay a true polyhedron (a texturing service paints it, th
 
 - Each die clones the model with its own materials, so effects (`glow`) and `reset()` fades touch one die. `dieMaterials(die)` returns every material of any die for your own effects.
 - The labels use the design's numeral font, one glyph size per die; `isSecret` labels show `?`.
-- Colour textures are read as they are, like the procedural dice (the roller renders in linear space), so a model looks as its preview did.
-- A roll waits for the models it needs; `preloadSets()` and `prepareDiceSets({ sets })` load them ahead. Without a loader, or when a file fails, that die rolls as the design's procedural die and one warning is logged; `clearModelCache()` retries.
+- Colour textures are read as they are, like the procedural dice (the roller renders in linear space), so a model looks as its preview did. This switches the loaded scene's colour textures to linear in place: load a separate copy for anything rendered in sRGB.
+- A roll waits for the models it needs; `preloadSets()` and `prepareDiceSets({ sets })` load them ahead. Without a loader, or when a file fails or takes longer than the loader's `timeoutMs` (`setModelLoader(fn, { timeoutMs })`, 20 s by default), that die rolls as the design's procedural die and one warning is logged; `clearModelCache()` retries.
 - `open-dice-dnd/gltf` parses with three's GLTFLoader bundled against the library's own `three`, so loaded scenes share the roller's three instance. It is ES only; pass `{ loader }` for a GLTFLoader with Draco or meshopt decoders, `{ fetchOptions }` for credentials. UMD users pass their own loader to `setModelLoader`.
 
 ## 🔊 Sounds
@@ -710,7 +711,8 @@ npm run build
 - The studio `analyzeModelDie(object, { type })` turns any loaded model into a `models` entry (hull, face map, numbered labels) by throwing it with the roller's physics, and reports how fairly it rolls; `remapModelValues()` relabels it.
 - `dieShape(type, { rounding, stopper })` and `shapeToGlb(object)` export exact die shapes for texturing elsewhere.
 - `dieMaterials(die)` reaches every material of any die; `glow` and `reset()` use it.
-- Model dice settle after ten still physics steps in a row, so an irregular shape never freezes mid-rock. Classic dice and designs without models are unchanged.
+- Model dice settle after ten still physics steps in a row, so an irregular shape never freezes mid-rock. A model d10 takes a replayed 10 on its 0 face, as the classic d10 does. A model file that takes longer than 20 s falls back to the procedural die. Classic dice and designs without models are unchanged.
+- The built files now ship THIRD_PARTY_NOTICES.txt for the bundled three.js example code.
 
 ### [1.6.0] - 2026-10-03
 

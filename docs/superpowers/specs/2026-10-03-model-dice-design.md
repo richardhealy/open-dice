@@ -33,7 +33,7 @@ models: {
 
 ## 3. Runtime
 
-- **Loader.** `setModelLoader(fn)` installs `fn(src) => Promise<Object3D | { scene }>`. Models are cached per `src`. With no loader, or when a load fails, that die type renders as the design's procedural die and a warning is logged once per `src`.
+- **Loader.** `setModelLoader(fn, { timeoutMs })` installs `fn(src) => Promise<Object3D | { scene }>`. Models are cached per `src`. With no loader, or when a load fails or takes longer than `timeoutMs` (20 s), that die type renders as the design's procedural die and a warning is logged once per `src`.
 - **Waiting.** A roll waits for the models its dice need, as a first set roll already waits for the font. `preloadSets(ids)` and `prepareDiceSets({ sets })` load models too.
 - **Physics-determined results.** The roll prediction already runs in the live world with the seeds the visible dice reuse. It now builds the same model bodies the visible dice use, so a model die without `rolled` reports the face its shape really lands on: `results[i].value` is that face's value and `total` sums them.
 - **Replays.** With `rolled`, a model die behaves like a classic one: the labels are permuted so the predicted landing face shows the target (values L and T swap on every label). A host replays a roll for other viewers by passing the reported value as `rolled`.
@@ -48,7 +48,7 @@ Input: a loaded `Object3D` and `{ type, throws = 300, seed = 1, maxHullPoints = 
 
 1. Collect the vertices of every mesh, in the object's frame.
 2. Build the convex hull, centre it on its volume centroid and scale it so its volume equals the classic die's of that type (so the model die sits beside classic dice at the same size).
-3. Simplify the hull to at most `maxHullPoints` points: support points over 256 directions, then greedy removal of the point whose loss costs the least volume.
+3. Simplify the hull to at most `maxHullPoints` points (4 to 128): the support points over the densest direction set, up to 256 directions, that stays within the cap. The simplified hull is inscribed in the model's own, so the model may dip slightly into the table where the hull cuts a curve.
 4. Throw the hull `throws` times in a world configured like the roller's (gravity, materials, damping, throw ranges, walls), with a seeded PRNG so a run is reproducible. Record each resting up vector.
 5. Cluster the resting up vectors (12 degrees). The `sides` largest clusters become the faces; fewer clusters than sides returns `ok: false` with a reason.
 6. Assign values. The face whose `up` is nearest the model's own +Y (its upright top) takes the highest value; on every die but the d4, opposite faces pair to sum like a real die (7 on a d6, 9 on a d8 and the 0-9 d10, 13 on a d12, 21 on a d20) and pairs follow by azimuth; anything left is filled in order.
@@ -63,7 +63,7 @@ Text-to-3D services drift towards familiar objects: asked twice for a tetrahedra
 
 ## 6. GLTF helper
 
-`open-dice-dnd/gltf` exports `createGltfModelLoader({ crossOrigin })`. It imports three's GLTFLoader from the library's own `three`, so loaded objects come from the same three instance the roller renders with. ES build only; a UMD host passes its own loader to `setModelLoader`.
+`open-dice-dnd/gltf` exports `createGltfModelLoader({ fetchOptions, loader })`. It imports three's GLTFLoader from the library's own `three`, so loaded objects come from the same three instance the roller renders with. ES build only; a UMD host passes its own loader to `setModelLoader`.
 
 ## 7. Compatibility
 

@@ -74,6 +74,26 @@ describe('model dice', () => {
         expect(byValue).toEqual({ 1: '1', 2: '5', 3: '3', 4: '4', 5: '2', 6: '6' });
     });
 
+    it('a d10 replays a 10 as its 0 face, like the classic d10, and reads it back as 10', async () => {
+        const ups = Array.from({ length: 10 }, (_, i) => [Math.cos((i * Math.PI) / 5), i % 2 ? 0.3 : -0.3, Math.sin((i * Math.PI) / 5)]);
+        const d10 = validateSet({
+            id: 'ten', name: 'Ten', family: 'glass', body: { color: '#225588' }, numeral: { color: '#FFFFFF' }, swatch: ['#225588'],
+            models: { d10: {
+                src: 'cube.glb',
+                hull: [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0, 0.6, 0], [0, -0.5, 0.5]],
+                faces: ups.map((up, value) => ({ value, up })),
+                labels: ups.map((up, value) => ({ value, position: up.map((v) => v * 0.4), normal: up, up: [0, 1, 0], size: 0.3 })),
+            } },
+        }).models.d10;
+        const landing = d10.faces.findIndex((f) => f.value === 7);
+        const die = createModelDie({ type: 'd10', model: d10, set, visible: true, targetNumber: 10, foundClosestIndex: landing });
+        restOn(die, d10.faces[landing].up);
+        expect(modelDieValue(die, UP)[0]).toBe(10);
+        const byValue = Object.fromEntries(d10.labels.map((l, i) => [l.value, labelTexts(die)[i]]));
+        expect(byValue[7]).toBe('0');          // the landing face shows the d10's "0"
+        expect(byValue[0]).toBe('7');          // and the old "0" face took the 7
+    });
+
     it('a target the die cannot show leaves the faces alone', () => {
         const die = createModelDie({ type: 'd6', model: set.models.d6, set, visible: false, targetNumber: 9, foundClosestIndex: 0 });
         expect(die.faceValues).toEqual(set.models.d6.faces.map((f) => f.value));

@@ -4,7 +4,11 @@
  * format; `open-dice-dnd/gltf` offers a GLTF loader that uses the library's own three.
  */
 
+/** How long a model file may take before the die falls back to the design's procedural one. */
+export const DEFAULT_MODEL_LOAD_TIMEOUT_MS = 20000;
+
 let loader = null;
+let timeoutMs = DEFAULT_MODEL_LOAD_TIMEOUT_MS;
 const entries = new Map();
 const warned = new Set();
 
@@ -16,12 +20,15 @@ function warnOnce(src, reason) {
 
 /**
  * Install the function that loads a model file: `loader(src) => Promise<Object3D | { scene }>`.
- * Pass null to remove it. Models already loaded stay cached.
+ * Pass null to remove it. Models already loaded stay cached. A load that takes longer than
+ * `timeoutMs` (default 20 s) counts as failed, so a stalled request never holds rolls up.
  * @param {Function|null} fn
+ * @param {{ timeoutMs?: number }} [options]
  */
-export function setModelLoader(fn) {
+export function setModelLoader(fn, { timeoutMs: limit = DEFAULT_MODEL_LOAD_TIMEOUT_MS } = {}) {
     if (fn != null && typeof fn !== 'function') throw new TypeError('open-dice-dnd: setModelLoader expects a function or null');
     loader = fn || null;
+    timeoutMs = Number.isFinite(limit) && limit > 0 ? limit : DEFAULT_MODEL_LOAD_TIMEOUT_MS;
 }
 
 /**
@@ -39,8 +46,13 @@ export function loadModel(src) {
     }
     const entry = { scene: null, promise: null, settled: false };
     const load = loader;
-    entry.promise = Promise.resolve()
-        .then(() => load(src))
+    const limit = timeoutMs;
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timed out after ${limit} ms`)), limit);
+    });
+    entry.promise = Promise.race([Promise.resolve().then(() => load(src)), timeout])
+        .finally(() => clearTimeout(timer))
         .then((result) => {
             const scene = result && result.isObject3D ? result : result && result.scene;
             if (!scene || !scene.isObject3D) throw new Error('the loader returned no 3D object');

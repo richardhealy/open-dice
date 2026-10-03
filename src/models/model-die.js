@@ -76,15 +76,22 @@ export function modelTemplate(model) {
     return template;
 }
 
-/** Values per face after a replay's swap: the predicted landing value and the target trade places. */
-function replayValues(model, targetNumber, foundClosestIndex) {
+/**
+ * Values per face after a replay's swap: the predicted landing value and the target trade
+ * places. A d10's ten is its "0" face, as on the classic d10: a target of 10 lands the 0 there
+ * and that face reads 10.
+ */
+function replayValues(type, model, targetNumber, foundClosestIndex) {
     const values = model.faces.map((f) => f.value);
-    const valid = targetNumber != null && foundClosestIndex != null
-        && foundClosestIndex >= 0 && foundClosestIndex < values.length && values.includes(targetNumber);
+    const tenOnZero = type === 'd10' && targetNumber === 10;
+    const target = tenOnZero ? 0 : targetNumber;
+    const valid = target != null && foundClosestIndex != null
+        && foundClosestIndex >= 0 && foundClosestIndex < values.length && values.includes(target);
     if (!valid) return { values, swap: (v) => v };
     const landing = values[foundClosestIndex];
-    const swap = (v) => (v === landing ? targetNumber : v === targetNumber ? landing : v);
-    return { values: values.map(swap), swap };
+    const swap = (v) => (v === landing ? target : v === target ? landing : v);
+    const swapped = values.map(swap);
+    return { values: tenOnZero ? swapped.map((v) => (v === 0 ? 10 : v)) : swapped, swap };
 }
 
 function cloneMaterials(object) {
@@ -106,7 +113,7 @@ export function createModelDie({ type, model, set, visible = true, targetNumber,
     const body = new CANNON.Body({ mass: 1, shape: hullShape(modelHull(model)), material: material || undefined });
     // Settles only after resting MODEL_REST_STEPS steps in a row (see physics-config).
     body.modelDie = true;
-    const { values, swap } = replayValues(model, targetNumber, foundClosestIndex);
+    const { values, swap } = replayValues(type, model, targetNumber, foundClosestIndex);
     const mesh = new THREE.Group();
     const template = visible ? modelTemplate(model) : null;
     if (template) {

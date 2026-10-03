@@ -21,7 +21,8 @@
   "files": [
     "dist",
     "src",
-    "readme.md"
+    "readme.md",
+    "THIRD_PARTY_NOTICES.txt"
   ],
   "type": "module",
   "scripts": {

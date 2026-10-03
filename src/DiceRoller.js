@@ -606,69 +606,72 @@ export class DiceRoller {
 
         const dice = [];
         const seeds = [];
-        diceConfig.forEach((diceRoll) => {
-            const repeatCount = diceRoll.dice === 'd100' ? 2 : 1;
-            for (let i = 0; i < repeatCount; i++) {
-                // Spawn into this.world without adding to the scene — these
-                // are prediction-only bodies; nothing should be rendered.
-                // The die's design rides along so a model die predicts with its model's hull,
-                // the very body the visible die will have.
-                const die = createDie(
-                    diceRoll.dice, false, i === 0,
-                    diceRoll.rolled, null,
-                    this.diceMaterial, null, this.world,
-                    diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
-                    diceRoll.isSecret, null, null,
-                    { set: this._setFor(diceRoll) }
-                );
-                const seed = this._generateRandomSeed();
-                seeds.push(seed);
-                if (!die) {
-                    dice.push(null);
-                    continue;
+        // Whatever happens below, prediction bodies leave the world and existing dice go back
+        // where they were: a die that fails to build must not leave an invisible body behind.
+        try {
+            diceConfig.forEach((diceRoll) => {
+                const repeatCount = diceRoll.dice === 'd100' ? 2 : 1;
+                for (let i = 0; i < repeatCount; i++) {
+                    // Spawn into this.world without adding to the scene — these
+                    // are prediction-only bodies; nothing should be rendered.
+                    // The die's design rides along so a model die predicts with its model's hull,
+                    // the very body the visible die will have.
+                    const die = createDie(
+                        diceRoll.dice, false, i === 0,
+                        diceRoll.rolled, null,
+                        this.diceMaterial, null, this.world,
+                        diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
+                        diceRoll.isSecret, null, null,
+                        { set: this._setFor(diceRoll) }
+                    );
+                    const seed = this._generateRandomSeed();
+                    seeds.push(seed);
+                    if (!die) {
+                        dice.push(null);
+                        continue;
+                    }
+                    die.isFirst = !(i > 0 && diceRoll.dice === 'd100');
+                    this._applyDiePhysics(die, seed);
+                    dice.push(die);
                 }
-                die.isFirst = !(i > 0 && diceRoll.dice === 'd100');
-                this._applyDiePhysics(die, seed);
-                dice.push(die);
+            });
+
+            const maxSteps = 5000;
+            const minSteps = 60;
+            for (let step = 0; step < maxSteps; step++) {
+                this.world.step(1 / 60);
+                if (step < minSteps) continue;
+                const allSettled = dice.every(d => !d || this._isBodySettled(d.body));
+                if (allSettled) break;
             }
-        });
 
-        const maxSteps = 5000;
-        const minSteps = 60;
-        for (let step = 0; step < maxSteps; step++) {
-            this.world.step(1 / 60);
-            if (step < minSteps) continue;
-            const allSettled = dice.every(d => !d || this._isBodySettled(d.body));
-            if (allSettled) break;
+            const closestIndexes = dice.map(d => {
+                if (!d) return null;
+                d.mesh.quaternion.copy(d.body.quaternion);
+                return getDieValue(d, this.up)[1];
+            });
+            return { closestIndexes, seeds };
+        } finally {
+            // Remove the prediction bodies from the world so they don't
+            // collide with the visible dice we're about to spawn with the
+            // same seeds.
+            for (const d of dice) {
+                if (d && d.body) this.world.removeBody(d.body);
+            }
+
+            // Restore existing dice to their pre-prediction state. They'll
+            // experience the same collisions again when the visible new dice
+            // are spawned with the same seeds, so they end up in the same
+            // final state — preserving determinism for both batches.
+            for (const snap of snapshots) {
+                snap.die.body.position.copy(snap.position);
+                snap.die.body.quaternion.copy(snap.quaternion);
+                snap.die.body.velocity.copy(snap.velocity);
+                snap.die.body.angularVelocity.copy(snap.angularVelocity);
+                snap.die.body.force.setZero();
+                snap.die.body.torque.setZero();
+            }
         }
-
-        const closestIndexes = dice.map(d => {
-            if (!d) return null;
-            d.mesh.quaternion.copy(d.body.quaternion);
-            return getDieValue(d, this.up)[1];
-        });
-
-        // Remove the prediction bodies from the world so they don't
-        // collide with the visible dice we're about to spawn with the
-        // same seeds.
-        for (const d of dice) {
-            if (d && d.body) this.world.removeBody(d.body);
-        }
-
-        // Restore existing dice to their pre-prediction state. They'll
-        // experience the same collisions again when the visible new dice
-        // are spawned with the same seeds, so they end up in the same
-        // final state — preserving determinism for both batches.
-        for (const snap of snapshots) {
-            snap.die.body.position.copy(snap.position);
-            snap.die.body.quaternion.copy(snap.quaternion);
-            snap.die.body.velocity.copy(snap.velocity);
-            snap.die.body.angularVelocity.copy(snap.angularVelocity);
-            snap.die.body.force.setZero();
-            snap.die.body.torque.setZero();
-        }
-
-        return { closestIndexes, seeds };
     }
 
     /**

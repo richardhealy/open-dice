@@ -78,6 +78,13 @@ describe('models in a design', () => {
         expect(failing({ d4: d4Model({ hull: [...TETRA.slice(0, 3), [9, 0, 0]] }) })).toMatch(/^models\.d4\.hull\[3\]: must lie within 5 units/);
     });
 
+    it('refuses a hull that spans no volume or does not surround its centre of mass', () => {
+        expect(failing({ d4: d4Model({ hull: [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]] }) })).toMatch(/^models\.d4\.hull: the points are flat/);
+        expect(failing({ d4: d4Model({ hull: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]] }) })).toMatch(/^models\.d4\.hull: the points are flat/);
+        const shifted = TETRA.map(([x, y, z]) => [x + 3, y, z]);
+        expect(failing({ d4: d4Model({ hull: shifted }) })).toMatch(/^models\.d4\.hull: must surround the origin/);
+    });
+
     it('needs exactly one face per value', () => {
         expect(failing({ d4: d4Model({ faces: d4Model().faces.slice(0, 3) }) })).toMatch(/^models\.d4\.faces: a d4 needs 4 faces/);
         const dup = d4Model().faces.map((f, i) => (i === 3 ? { ...f, value: 1 } : f));

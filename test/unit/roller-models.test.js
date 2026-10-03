@@ -123,6 +123,27 @@ describe('a model die rests only once it has stayed still', () => {
     });
 });
 
+describe('a roll whose die cannot be built leaves the table as it was', () => {
+    let restore;
+    beforeEach(async () => {
+        restore = setCanvasFactories({ canvas: (size) => makeRecordingCanvas(size) });
+        clearModelCache();
+        setModelLoader(async () => boxScene());
+        await loadModel('flat.glb');
+    });
+    afterEach(() => { restore(); setModelLoader(null); });
+
+    it('removes every prediction body when building a die throws', () => {
+        const r = headlessRoller();
+        const before = r.world.bodies.length;
+        // A hand-built (unvalidated) design object: resolveSet passes objects through.
+        const broken = { id: 'broken', name: 'Broken', family: 'glass', body: { color: '#000000' }, numeral: { color: '#FFFFFF' }, swatch: ['#000000'],
+            models: { d6: { src: 'flat.glb', transform: { scale: 1, position: [0, 0, 0], rotation: [0, 0, 0, 1] }, hull: [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]], faces: [], labels: [], numeral: null } } };
+        expect(() => r._preSimulateInLiveWorld([{ dice: 'd20' }, { dice: 'd6', set: broken }])).toThrow();
+        expect(r.world.bodies.length).toBe(before);
+    });
+});
+
 describe('waiting for models', () => {
     beforeEach(() => {
         clearModelCache();

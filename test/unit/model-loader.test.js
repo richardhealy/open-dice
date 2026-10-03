@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as THREE from 'three';
-import { setModelLoader, loadModel, loadedModel, loadSetModels, clearModelCache } from '../../src/models/loader.js';
+import { setModelLoader, loadModel, loadedModel, loadSetModels, clearModelCache, isModelSettled, DEFAULT_MODEL_LOAD_TIMEOUT_MS } from '../../src/models/loader.js';
 
 describe('model loader', () => {
     let warn;
@@ -42,6 +42,16 @@ describe('model loader', () => {
         clearModelCache();
         expect(await loadModel('x.glb')).toBeNull();
         expect(loader).toHaveBeenCalledTimes(2);
+    });
+
+    it('a load that never answers fails after the timeout, so a roll falls back instead of waiting forever', async () => {
+        setModelLoader(() => new Promise(() => {}), { timeoutMs: 20 });
+        const started = Date.now();
+        expect(await loadModel('slow.glb')).toBeNull();
+        expect(Date.now() - started).toBeLessThan(1000);
+        expect(isModelSettled('slow.glb')).toBe(true);
+        expect(warn.mock.calls[0][0]).toMatch(/slow\.glb.*timed out after 20 ms/);
+        expect(DEFAULT_MODEL_LOAD_TIMEOUT_MS).toBe(20000);
     });
 
     it('rejects a loader result that is not an Object3D', async () => {

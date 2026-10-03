@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { buildHull, hullVolume, hullCentroid, hullShape, simplifyHull } from './hull.js';
-import { MODEL_DIE_TYPES, MODEL_DIE_VALUES, CLASSIC_RADIUS, CORNER_READ } from './spec.js';
+import { MODEL_DIE_TYPES, MODEL_DIE_VALUES, CLASSIC_RADIUS, CORNER_READ, modelsSpec } from './spec.js';
 import { D4_GEOMETRY, D6_GEOMETRY, D8_GEOMETRY, D10_GEOMETRY, D12_GEOMETRY, D20_GEOMETRY } from '../geometry.js';
 import { GRAVITY_Y, SOLVER_ITERATIONS, CONTACT, DIE_DAMPING, FRUSTUM_SIZE, WALL_THICKNESS, WALL_HEIGHT, applyThrow, isDieSettled, trackRestSteps } from '../physics-config.js';
 
@@ -288,8 +288,8 @@ function topRegion(hull, up) {
         inradius = Math.min(inradius, Math.abs((x1 - x0) * (y0 - cy) - (x0 - cx) * (y1 - y0)) / len);
     }
     const height = [...picked].reduce((sum, k) => sum + hull.points[k].dot(normal), 0) / picked.size;
-    const centroid = u.clone().multiplyScalar(cx).addScaledVector(v, cy).addScaledVector(normal, height);
-    return { centroid, inradius, normal };
+    const inPlane = (x, y) => u.clone().multiplyScalar(x).addScaledVector(v, y).addScaledVector(normal, height);
+    return { centroid: inPlane(cx, cy), inradius, normal, points: loop.map(([x, y]) => inPlane(x, y)) };
 }
 
 /** Where the model's visible surface lies under a point, looking along -normal. */
@@ -306,8 +306,9 @@ function placeLabels(type, hull, faces, template, warnings) {
     if (CORNER_READ.has(type)) {
         // Each face the die can rest on carries the values of its corners, near each corner.
         for (const rest of faces) {
-            const { index } = nearestFace(hull, rest.upVector.clone().negate());
-            const face = faceGeometry(hull, index);
+            // The face the die rests on, merged from every gentle facet that makes it up.
+            const down = rest.upVector.clone().negate();
+            const face = topRegion(hull, down) || faceGeometry(hull, nearestFace(hull, down).index);
             for (const corner of faces) {
                 if (corner === rest) continue;
                 // The corner that points up when `corner` is the result.
@@ -393,8 +394,10 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
  * @returns {Promise<{ ok: boolean, reason?: string, model?: object, report?: object }>}
  */
 export async function analyzeModelDie(object, options = {}) {
-    const { type, throws = 300, seed = 1, maxHullPoints = 48, onProgress = null } = options;
+    const { type, throws = 300, seed = 1, onProgress = null } = options;
     if (!MODEL_DIE_TYPES.includes(type)) throw new Error(`open-dice-dnd: analyzeModelDie needs a type: one of ${MODEL_DIE_TYPES.join(', ')}`);
+    // A models entry holds 4 to 128 hull points.
+    const maxHullPoints = Math.min(128, Math.max(4, Math.floor(options.maxHullPoints ?? 48)));
     const vertices = collectVertices(object);
     if (vertices.length < 4) return { ok: false, reason: 'the model has no geometry' };
 
@@ -444,7 +447,8 @@ export async function analyzeModelDie(object, options = {}) {
     const unused = throws - chosen.reduce((n, c) => n + c.count, 0);
     const report = summarizeThrows(counts, { values: MODEL_DIE_VALUES[type], unused, type });
 
-    const transform = { scale: round(scale), position: vec(centroid.clone().multiplyScalar(-scale)), rotation: [0, 0, 0, 1] };
+    // Nine significant digits, not six decimals: a model authored at a vast scale needs a tiny one.
+    const transform = { scale: Number(scale.toPrecision(9)), position: vec(centroid.clone().multiplyScalar(-scale)), rotation: [0, 0, 0, 1] };
     const template = new THREE.Group();
     const placed = new THREE.Group();
     placed.scale.setScalar(transform.scale);
@@ -455,16 +459,19 @@ export async function analyzeModelDie(object, options = {}) {
     const labels = placeLabels(type, hull, faces, template, report.warnings);
 
     if (onProgress) onProgress(1);
-    return {
-        ok: true,
-        model: {
-            transform,
-            hull: hullPoints,
-            faces: faces.map((f) => ({ value: f.value, up: vec(f.upVector) })),
-            labels,
-        },
-        report: { ...report, restingFaces: clusters.length, coverage: covered },
+    const model = {
+        transform,
+        hull: hullPoints,
+        faces: faces.map((f) => ({ value: f.value, up: vec(f.upVector) })),
+        labels,
     };
+    // The entry must register as is; say so here rather than at registerDiceSet.
+    try {
+        modelsSpec({ [type]: { src: 'model', ...model } });
+    } catch (error) {
+        return { ok: false, reason: `the model cannot be used as it is: ${error.message.replace(/^open-dice-dnd: invalid dice set — /, '')}` };
+    }
+    return { ok: true, model, report: { ...report, restingFaces: clusters.length, coverage: covered } };
 }
 
 /**

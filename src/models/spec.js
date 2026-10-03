@@ -2,6 +2,7 @@
  * Model dice: the die types a design can give a 3D model, the values each one reads, and the
  * validator for a design's `models` entry. See README "Model dice".
  */
+import { buildHull } from './hull.js';
 
 export const MODEL_DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 
@@ -101,6 +102,12 @@ function modelSpec(field, type, m) {
         if (v.some((n) => Math.abs(n) > MAX_EXTENT)) fail(`${field}.hull[${i}]`, `must lie within ${MAX_EXTENT} units of the origin`);
         return v;
     });
+    // The body is the hull's QuickHull: it must have volume and, as the body's centre of mass,
+    // the origin must sit inside every face (cannon-es computes its faces' normals from that).
+    let built;
+    try { built = buildHull(hull); } catch (error) { fail(`${field}.hull`, 'the points are flat: they span no volume'); }
+    const inside = built.faces.every((f, i) => built.normals[i].lengthSq() > 0.5 && built.normals[i].dot(built.points[f[0]]) > 1e-6);
+    if (!inside) fail(`${field}.hull`, 'must surround the origin, the centre of mass (analyse the model with analyzeModelDie)');
 
     const sides = MODEL_DIE_VALUES[type].length;
     if (!Array.isArray(m.faces) || m.faces.length !== sides) fail(`${field}.faces`, `a ${type} needs ${sides} faces, one per value`);
