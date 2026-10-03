@@ -48,7 +48,6 @@
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
-    "open-dice-dnd": "^1.2.1",
     "three": "^0.130.0"
   },
   "peerDependencies": {
