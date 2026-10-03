@@ -7,6 +7,7 @@ import { glow, scalePulse, haloRing, runEffectsRules } from './effects/index.js'
 import { resolveSet, CLASSIC } from './sets/index.js';
 import { prepareDiceSets } from './sets/prepare.js';
 import { collectSetImages } from './sets/face-materials.js';
+import { collectSetDecalSources } from './sets/decals.js';
 import { setTextureAnisotropy } from './sets/texture-cache.js';
 import { resolvePixelRatio, clampPixelRatioToBuffer } from './pixel-ratio.js';
 
@@ -410,7 +411,7 @@ export class DiceRoller {
     async preloadSets(ids = []) {
         await this._ensureSetAssets();
         const sets = ids.map((id) => resolveSet(id)).filter((set) => set.id !== CLASSIC);
-        const images = [...new Set(sets.flatMap((set) => collectSetImages(set)))];
+        const images = [...new Set(sets.flatMap((set) => [...collectSetImages(set), ...collectSetDecalSources(set)]))];
         if (images.length > 0) await this.decalRegistry.preload(images);
         for (const set of sets) {
             for (const type of DIE_TYPES) {

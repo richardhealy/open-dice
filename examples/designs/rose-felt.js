@@ -1,3 +1,5 @@
+import { rose, svgDataUrl } from './decal-art.js';
+
 /**
  * Dusty pink felt: matte (roughness 1, no clearcoat) with a soft vignette, darker rose corner
  * florets painted flat, engraved plum numerals and no metal on the edges.
@@ -18,5 +20,7 @@ export default {
     edge: { metal: 'none' },
     numeral: { color: '#2E0E26', style: 'engraved' },
     decor: { art: 'corners', color: '#9E4A5E', relief: 0.3 },
+    // The "20" carries a mark instead of its numeral, as an ordinary decal (any host can override it).
+    decals: { d20: { '20': { src: svgDataUrl(rose('#C76B8E', '#2E0E26')), scale: 1.27 } } },
     swatch: ['#E8B4C0', '#2E0E26'],
 };

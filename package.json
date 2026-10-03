@@ -1,6 +1,6 @@
 {
   "name": "open-dice-dnd",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "author": "Richard Fernandez <richard@superdevs.pro>",
   "repository": {
     "type": "git",
@@ -48,7 +48,6 @@
   },
   "dependencies": {
     "cannon-es": "^0.20.0",
-    "open-dice-dnd": "^1.2.1",
     "three": "^0.130.0"
   },
   "peerDependencies": {

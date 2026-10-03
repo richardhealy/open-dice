@@ -12,6 +12,45 @@ const METAL_NAMES = Object.keys(METALS);
 const IMAGE_FITS = ['cover', 'tile'];
 const MAX_DECOR_LAYERS = 6;
 
+const DECAL_DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
+const range1 = (n) => Array.from({ length: n }, (_, i) => String(i + 1));
+/** The face values each die type shows; a decal keyed on any other value could never paint. */
+const DECAL_FACE_VALUES = {
+    d4: range1(4), d6: range1(6), d8: range1(8), d10: ['0', ...range1(9)], d12: range1(12), d20: range1(20),
+    d100: ['0', ...range1(9), '00', '10', '20', '30', '40', '50', '60', '70', '80', '90'],
+};
+
+/** One decal entry: exactly the library's decal options, keeping only the fields given. */
+function decalOptions(field, d) {
+    if (!d || typeof d !== 'object' || Array.isArray(d)) fail(field, 'must be { src, scale?, offsetX?, offsetY?, rotation? }');
+    if (typeof d.src !== 'string' || !d.src.trim()) fail(`${field}.src`, 'required');
+    const out = { src: d.src };
+    if (d.scale != null) out.scale = range(`${field}.scale`, d.scale, 0.1, 2, 1);
+    if (d.offsetX != null) out.offsetX = range(`${field}.offsetX`, d.offsetX, -0.5, 0.5, 0);
+    if (d.offsetY != null) out.offsetY = range(`${field}.offsetY`, d.offsetY, -0.5, 0.5, 0);
+    if (d.rotation != null) out.rotation = range(`${field}.rotation`, d.rotation, -360, 360, 0);
+    return out;
+}
+
+/** `{ [dieType]: { [faceValue]: decalOptions } }`, or null. */
+function decalsSpec(value) {
+    if (value == null) return null;
+    if (typeof value !== 'object' || Array.isArray(value)) fail('decals', 'must map die types to { faceValue: decal }');
+    const out = {};
+    for (const [type, byValue] of Object.entries(value)) {
+        if (!DECAL_DIE_TYPES.includes(type)) fail(`decals.${type}`, `unknown die type; one of ${DECAL_DIE_TYPES.join(', ')}`);
+        if (!byValue || typeof byValue !== 'object' || Array.isArray(byValue)) fail(`decals.${type}`, 'must map face values to decals');
+        const entries = Object.entries(byValue);
+        if (entries.length === 0) continue;
+        out[type] = {};
+        for (const [face, decal] of entries) {
+            if (!DECAL_FACE_VALUES[type].includes(face)) fail(`decals.${type}.${face}`, `a ${type} has no face "${face}"; faces are ${DECAL_FACE_VALUES[type].join(', ')}`);
+            out[type][face] = decalOptions(`decals.${type}.${face}`, decal);
+        }
+    }
+    return Object.keys(out).length ? out : null;
+}
+
 function fail(field, message) {
     throw new Error(`open-dice-dnd: invalid dice set — ${field}: ${message}`);
 }
@@ -219,5 +258,7 @@ export function validateSet(def) {
     if (!Array.isArray(def.swatch) || def.swatch.length < 1 || def.swatch.length > 3) fail('swatch', 'must list 1 to 3 colours');
     const swatch = def.swatch.map((c, i) => hex(`swatch[${i}]`, c, true));
 
-    return deepFreeze({ id: def.id, name: def.name.trim(), family: def.family, body, edge, numeral, decor, emblems, swatch });
+    const decals = decalsSpec(def.decals);
+
+    return deepFreeze({ id: def.id, name: def.name.trim(), family: def.family, body, edge, numeral, decor, emblems, decals, swatch });
 }

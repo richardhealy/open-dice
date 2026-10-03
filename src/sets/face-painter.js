@@ -1,12 +1,12 @@
 import { createCanvas, createPath2D } from './canvas-factory.js';
-import { FACE_FRAMES, frameRadius, applyFrameTransform } from './face-frame.js';
+import { FACE_FRAMES, frameRadius, applyFrameTransform, frameEdges } from './face-frame.js';
 import { METALS, FAMILY_DEFAULTS } from './materials.js';
 import { pattern, hashSeed } from './noise.js';
 import { pourPixels, circuitMask, feltPixels } from './patterns.js';
 import { heightToNormal } from './normal-map.js';
 import { getDecor } from './decor/index.js';
 import { getEmblem } from './decor/emblems.js';
-import { fontStack } from './fonts/numerals.js';
+import { fontStack, isNumeralFontReady } from './fonts/numerals.js';
 import { drawDecalImage, drawD4CornerDecal, isUnderlined } from '../face-texture.js';
 import { hexToRgb, rgbToHex, shade, mrColor, scaleColor } from './color.js';
 
@@ -18,6 +18,14 @@ export const NUMERAL_SIZE = 0.445;
 export const CORNER_SIZE = 0.266;
 /** d4 corner numerals sit this fraction of the canvas above the centre, as today. */
 export const CORNER_OFFSET = 0.3;
+/** A numeral is never shrunk below this fraction of its design size to fit a face. */
+export const MIN_FIT = 0.5;
+/**
+ * Clearance kept between a numeral's box and the face edge, as a fraction of the face's
+ * circumradius: more where a decoration band runs along the edge, less for the d4's corner
+ * numerals, which sit in the corners by design.
+ */
+export const FIT_MARGIN = Object.freeze({ band: 0.1, plain: 0.06, corner: 0.04 });
 /**
  * Body colours are painted this much darker than stated. The table's ambient and key lights
  * (shared with classic dice, so they cannot change) plus the environment lift a physically
@@ -200,7 +208,13 @@ function emissiveMask(entry, colour) {
 /** Alpha-filled copies of decoration images, per image and fill colour, shared by every face. */
 let imageFills = new WeakMap();
 
+/** Drop the cached patterns of one set (its definition was replaced or removed). */
+export function clearPatternCacheFor(id) {
+    for (const key of [...patternCache.keys()]) if (key.startsWith(`${id}|`)) patternCache.delete(key);
+}
+
 export function clearPatternCache() {
+    dieSizeCache = new WeakMap();
     patternCache.clear();
     imageFills = new WeakMap();
 }
@@ -435,6 +449,99 @@ function paintImageLayer(ctx, ts, layer, mode, lookup, maxRelief, intensity) {
     else ctx.drawImage(alphaFill(img, ts, fill), 0, 0);
 }
 
+/** True when a decoration layer actually paints a band on this face shape. */
+function hasBandOn(set, type) {
+    const shape = FACE_FRAMES[type].shape;
+    return decorLayers(set).some((layer) => (layer.image ? shape !== 'kite' : decorPaths(layer.art, shape).length > 0));
+}
+
+/**
+ * Largest font size, at most `basePx` and at least `basePx * MIN_FIT`, at which the numeral's
+ * box fits inside the face polygon less a margin. Faces differ hugely in texture space (a
+ * d12 pentagon is far smaller than a d20 triangle, the d100 tens faces carry two digits) and
+ * the serif digits are wider than classic Arial, so a single size overflowed some faces. The
+ * box is the measured ink extent (actualBoundingBox* where the browser reports it), widened
+ * for the 6/9 underline, the outline and the engraved or inlay offsets. Glyph metrics scale
+ * linearly with the font size, so one measurement at `basePx` gives the closed-form scale.
+ */
+export function fitNumeralSize({ ctx, text, set, type, basePx, x, y, ts, corner = false }) {
+    const frame = FACE_FRAMES[type];
+    if (!frame || !ctx || typeof ctx.measureText !== 'function') return basePx;
+    ctx.save();
+    ctx.font = fontString(set, basePx);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const m = ctx.measureText(text) || {};
+    ctx.restore();
+    const finite = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    const width = finite(m.width) ?? basePx * 0.62 * String(text).length;
+    let left = finite(m.actualBoundingBoxLeft) ?? width / 2;
+    let right = finite(m.actualBoundingBoxRight) ?? width / 2;
+    const ascent = finite(m.actualBoundingBoxAscent) ?? basePx * 0.36;
+    let descent = finite(m.actualBoundingBoxDescent) ?? basePx * 0.36;
+    if (isUnderlined(text)) {
+        descent = Math.max(descent, basePx * 0.37 + Math.max(2, basePx * 0.045) / 2);
+        left = Math.max(left, width / 2);
+        right = Math.max(right, width / 2);
+    }
+    const style = set.numeral.style;
+    let pad = set.numeral.outline ? (set.numeral.outline.width * basePx) / 2 : 0;
+    if (style === 'engraved' || style === 'inlay') pad += Math.max(1, basePx * 0.015);
+    const box = [[-left - pad, -ascent - pad], [right + pad, -ascent - pad], [right + pad, descent + pad], [-left - pad, descent + pad]];
+    const margin = frameRadius(frame, ts) * (corner ? FIT_MARGIN.corner : hasBandOn(set, type) ? FIT_MARGIN.band : FIT_MARGIN.plain);
+    let scale = 1;
+    const tooBig = () => warnOnce(`fit:${set.id}:${type}`, `open-dice-dnd: design "${set.id}" numerals cannot fit a ${type} face even at half size; reduce numeral.scale or the outline.`);
+    for (const { n, h } of frameEdges(frame, ts)) {
+        const room = h - margin - (n[0] * x + n[1] * y);
+        if (room <= 0) { tooBig(); return basePx * MIN_FIT; }
+        for (const [bx, by] of box) {
+            const reach = n[0] * bx + n[1] * by;
+            if (reach > 0) scale = Math.min(scale, room / reach);
+        }
+    }
+    if (scale < MIN_FIT) tooBig();
+    return basePx * Math.max(MIN_FIT, Math.min(1, scale));
+}
+
+/**
+ * The values a die of `type` shows, so its numerals can share one size. The d100 pair is two
+ * dice: the units die (0-9) and the tens die (00-90); a two-character face is the tens die.
+ */
+function dieValues(type, text) {
+    switch (type) {
+        case 'd4': return ['1', '2', '3', '4'];
+        case 'd6': return ['1', '2', '3', '4', '5', '6'];
+        case 'd8': return ['1', '2', '3', '4', '5', '6', '7', '8'];
+        case 'd10': return ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        case 'd12': return Array.from({ length: 12 }, (_, i) => String(i + 1));
+        case 'd20': return Array.from({ length: 20 }, (_, i) => String(i + 1));
+        case 'd100': return String(text).length >= 2
+            ? ['00', '10', '20', '30', '40', '50', '60', '70', '80', '90']
+            : ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        default: return [String(text)];
+    }
+}
+
+/** Per design definition (a replaced definition is a new object), per die and anchor. */
+let dieSizeCache = new WeakMap();
+
+/**
+ * One numeral size for a whole die: the smallest of the sizes at which each of its values fits.
+ * Real dice, and classic ones, use a single size per die; fitting glyph by glyph had a d20's
+ * "20" at 71 % beside its "7" at 100 %. A secret "?" uses the die's size too.
+ */
+export function fitDieNumeralSize({ ctx, text, set, type, basePx, x, y, ts, corner = false }) {
+    const values = dieValues(type, text === '?' ? '0' : text);
+    const key = `${type}|${values.length}|${values[0]}|${basePx}|${x}|${y}|${ts}|${corner ? 1 : 0}|${isNumeralFontReady() ? 1 : 0}`;
+    let perSet = dieSizeCache.get(set);
+    if (!perSet) { perSet = new Map(); dieSizeCache.set(set, perSet); }
+    if (perSet.has(key)) return perSet.get(key);
+    let size = basePx;
+    for (const v of values) size = Math.min(size, fitNumeralSize({ ctx, text: v, set, type, basePx, x, y, ts, corner }));
+    perSet.set(key, size);
+    return size;
+}
+
 function drawUnderline(ctx, text, x, y, sizePx, colour) {
     if (!isUnderlined(text)) return;
     const width = ctx.measureText(text).width;
@@ -452,11 +559,12 @@ function drawUnderline(ctx, text, x, y, sizePx, colour) {
  * carry numerals; MR maps carry them only for the inlay style; emissive maps only for glow,
  * scaled to the material's intensity (`intensity`, defaulting to the set's).
  */
-export function paintNumeral(ctx, text, { x, y, sizePx, set, mode, intensity }) {
+export function paintNumeral(ctx, text, { x, y, sizePx, set, mode, intensity, fit = null }) {
     const { style, color } = set.numeral;
     if (mode === 'height') return;
     if (mode === 'mr' && style !== 'inlay') return;
     if (mode === 'emissive' && style !== 'glow') return;
+    if (fit) sizePx = fitDieNumeralSize({ ctx, text, set, type: fit.type, basePx: sizePx, x, y, ts: fit.ts, corner: fit.corner });
     ctx.save();
     ctx.font = fontString(set, sizePx);
     ctx.textAlign = 'center';
@@ -574,7 +682,7 @@ function paintValue(ctx, ts, value, { set, type, isSecret, decals, decalRegistry
         paintEmblem(ctx, ts, emblem, paths, set, mode, place, maxRelief, intensity);
         return;
     }
-    paintNumeral(ctx, isSecret ? '?' : value, { x: place.x, y: place.y, sizePx: place.sizePx, set, mode, intensity });
+    paintNumeral(ctx, isSecret ? '?' : value, { x: place.x, y: place.y, sizePx: place.sizePx, set, mode, intensity, fit: { type, ts, corner: !!place.corner } });
 }
 
 function paintSingle(ctx, ts, opts, pending) {
@@ -589,6 +697,7 @@ function paintCorners(ctx, ts, opts, pending) {
     const place = {
         x: ts / 2, y: ts / 2 - ts * CORNER_OFFSET, sizePx: ts * CORNER_SIZE * set.numeral.scale,
         radius: frameRadius(FACE_FRAMES[type], ts) * (CORNER_SIZE / NUMERAL_SIZE),
+        corner: true,
     };
     ctx.save();
     for (let i = 0; i < face.values.length; i++) {

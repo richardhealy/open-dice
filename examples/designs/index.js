@@ -9,8 +9,12 @@ import mainframe from './mainframe.js';
 import rosewoodKnotwork from './rosewood-knotwork.js';
 import roseFelt from './rose-felt.js';
 
-/** Built-in dice set definitions, in catalogue order. Registered when src/sets/index.js loads. */
-export const BUILTIN_SETS = [
+/**
+ * Example dice designs for the demo, the tests and the docs. The library registers none of
+ * these: a host application owns its designs and registers them with registerDiceSet()
+ * (RollQuest serves its own from its marketplace). Plain JSON-safe data throughout.
+ */
+export const EXAMPLE_DESIGNS = [
     rubyJewel, emeraldJewel, sapphireJewel, obsidianGold, emberDragonhide,
     tidepoolPour, witchlightVines, mainframe, rosewoodKnotwork, roseFelt,
 ];
