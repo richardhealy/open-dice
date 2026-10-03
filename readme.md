@@ -16,6 +16,7 @@ A 3D physics-based dice rolling engine built with Three.js and Cannon-es. Design
 - 🔒 Secret roll mode
 - 🌈 Per-die colors (body, text, background)
 - 💎 Dice designs — data-defined premium looks your app registers (the library ships none; ten examples in `examples/designs`): procedural patterns, decoration layers, decals, emblems and image textures, with numerals fitted to every face
+- 🧊 Model dice — a design can roll a 3D model (a GLB from any modelling tool or text-to-3D service) whose shape decides the result; a studio turns any model into a die and reports how fairly it rolls
 - 📦 Lightweight, modular, no UI framework lock-in
 
 ---
@@ -97,7 +98,7 @@ Each entry in the `diceConfig` array passed to `roll()` / `addDice()`:
 ```js
 {
     dice: 'd20',                 // 'd4' | 'd6' | 'd8' | 'd10' | 'd12' | 'd20' | 'd100'
-    rolled: 18,                  // optional target value (authoritative)
+    rolled: 18,                  // optional target value (authoritative); omit it and the face that lands decides
     diceColor: 0xff6b6b,         // optional numeric hex — body color
     textColor: '#ffffff',        // optional hex string — face text color
     backgroundColor: '#4ecdc4',  // optional hex string — face background color
@@ -375,6 +376,77 @@ Two numeral families are embedded, subset to the digits and `?` under the SIL Op
 
 ---
 
+## 🧊 Model dice
+
+A design can give any of `d4`, `d6`, `d8`, `d10`, `d12` and `d20` a 3D model in place of the procedural polyhedron: a potion flask, a mimic chest, a crystal. The model's convex hull is the physics body, so **the shape decides how the die lands**. Roll it without `rolled` and the result is the face it comes to rest on. As with designs, the library ships no models: your app stores the files, installs the loader and registers designs whose `models` entries point at them. The other die types of that design keep its procedural look.
+
+```js
+import { DiceRoller, setModelLoader, analyzeModelDie, registerDiceSet } from 'open-dice-dnd';
+import { createGltfModelLoader } from 'open-dice-dnd/gltf';
+
+const loadGltf = createGltfModelLoader();
+setModelLoader(loadGltf);                          // the library fetches nothing itself
+
+// Once per model, in your authoring tool: analyse the file and store the result with the design.
+const scene = await loadGltf('/dice-models/potion-of-healing-d4.glb');
+const { ok, reason, model, report } = await analyzeModelDie(scene, { type: 'd4' });
+if (!ok) throw new Error(reason);                  // e.g. "the shape comes to rest in only 3 distinct ways"
+console.log(report.distribution);                  // { 1: 0.25, 2: 0.24, 3: 0.27, 4: 0.24 }
+
+registerDiceSet({
+    ...potionLook,                                 // id, name, family, body, numeral, swatch: the other dice
+    models: { d4: { src: '/dice-models/potion-of-healing-d4.glb', ...model, numeral: { color: '#FFFFFF' } } },
+});
+
+// No `rolled`: the shape decides. results[i].value is the face the flask landed on.
+const total = await roller.roll([{ dice: 'd4', set: 'potion-of-healing' }]);
+```
+
+### Results come from the physics
+
+The roll prediction runs in the live world with the very body the visible die uses, so a model die without `rolled` lands on the face the prediction found and reports it: `results[i].value`, `visible` and the `total` all agree. To show the same roll on other screens, send the reported values and roll them there with `rolled`: as with classic dice, the labels are permuted so the face that lands shows the value (the motion differs per screen; the numbers never do). The roller's report is the authority; a spectator's screen never decides.
+
+A model die settles only after it has stayed at rest for ten physics steps in a row: an irregular shape rocking on an edge passes through rest at the top of every rock, and settling there would freeze it tilted. Classic dice settle as before.
+
+### The `models` entry
+
+| Field | Meaning |
+|---|---|
+| `src` | The model file, handed to your loader as is. |
+| `transform` | Optional `{ scale, position, rotation: [x, y, z, w] }` placing the loaded scene in the die frame: `rotation * (scale * point) + position`. |
+| `hull` | 4 to 128 points (die frame, within 5 units). The physics body is their convex hull, with its centre of mass at the origin. |
+| `faces` | One `{ value, up }` per value of the die: the die reads `value` when `up` (die frame) points up. Values match the classic dice: d4 1-4, d6 1-6, d8 1-8, d10 0-9, d12 1-12, d20 1-20. |
+| `labels` | Optional numbers the library draws: `{ value, position, normal, up, size }`, a square decal `size` wide projected onto the surface along `-normal`, upright towards `up`. Without labels a replayed roll cannot show its value. |
+| `numeral` | Optional `{ color, outline: { color, width } }` for the labels; font and weight come from the design. |
+
+`registerDiceSet` validates every field and names the failing one. d100 keeps its procedural dice.
+
+### The studio: `analyzeModelDie(object, options)`
+
+Turns any loaded model into a `models` entry: it centres the model's hull on its centre of mass, scales it to the volume of the classic die of that type, simplifies it to at most `maxHullPoints` points, throws it `throws` times with the roller's own physics (gravity, materials, damping, throw ranges, table walls), clusters where it comes to rest, assigns values like a real die (the face nearest the model's own top takes the highest value; opposite faces sum like a real die's, 7 on a d6) and places the labels by raycasting onto the model's surface (one per top face; three per face near the corners on a d4).
+
+| Option | Default | |
+|---|---|---|
+| `type` | required | `'d4'` to `'d20'` |
+| `throws` | `300` | More throws, steadier odds; a few hundred take about a second. |
+| `seed` | `1` | Same model, same seed, same result. |
+| `maxHullPoints` | `48` | Physics cost grows with hull points. |
+| `onProgress` | none | Called with a fraction from 0 to 1. |
+
+It resolves `{ ok: true, model, report }`, or `{ ok: false, reason }` when the shape rests in fewer ways than the die has sides or has no clear resting faces (a ball). `report` holds `distribution` (share per value), `chiSquare`, `maxDeviation`, `unusedShare` (throws that rested off the chosen faces and read as the nearest one), `restingFaces`, `coverage` and readable `warnings`. `remapModelValues(model, { 4: 1, 1: 4 })` swaps values on faces and labels together.
+
+### Exact die shapes
+
+When the geometry must stay a true polyhedron (a texturing service paints it, the art comes later), start from the library's shape: `dieShape(type, { rounding, stopper })` builds the classic polyhedron at the classic size with rounded edges (a d4 stands on its base, a corner up) and, with `stopper: { radius, height }`, a short cylinder on top for flasks. `shapeToGlb(object)` writes any object's geometry as a GLB to hand over. Load the painted file, analyse it and register it like any other model.
+
+### Rendering notes
+
+- Each die clones the model with its own materials, so effects (`glow`) and `reset()` fades touch one die. `dieMaterials(die)` returns every material of any die for your own effects.
+- The labels use the design's numeral font, one glyph size per die; `isSecret` labels show `?`.
+- Colour textures are read as they are, like the procedural dice (the roller renders in linear space), so a model looks as its preview did.
+- A roll waits for the models it needs; `preloadSets()` and `prepareDiceSets({ sets })` load them ahead. Without a loader, or when a file fails, that die rolls as the design's procedural die and one warning is logged; `clearModelCache()` retries.
+- `open-dice-dnd/gltf` parses with three's GLTFLoader bundled against the library's own `three`, so loaded scenes share the roller's three instance. It is ES only; pass `{ loader }` for a GLTFLoader with Draco or meshopt decoders, `{ fetchOptions }` for credentials. UMD users pass their own loader to `setModelLoader`.
+
 ## 🔊 Sounds
 
 Pass an array of audio URLs and the engine plays a random one per dice collision, with volume scaled to impact velocity. WAV and OGG both work.
@@ -631,6 +703,14 @@ npm run build
 ---
 
 ## 📝 Changelog
+
+### [1.7.0] - 2026-10-03
+
+- 🧊 Model dice: a design's `models` entry gives d4 to d20 a host-supplied 3D model whose convex hull is the physics body, so the shape decides the roll. Without `rolled` the result is the face it lands on; with `rolled` (a replay) its labels are permuted to show the value. The library ships no models: `setModelLoader(fn)` installs the host's loader, and `open-dice-dnd/gltf` offers `createGltfModelLoader()` bound to the library's own three.
+- The studio `analyzeModelDie(object, { type })` turns any loaded model into a `models` entry (hull, face map, numbered labels) by throwing it with the roller's physics, and reports how fairly it rolls; `remapModelValues()` relabels it.
+- `dieShape(type, { rounding, stopper })` and `shapeToGlb(object)` export exact die shapes for texturing elsewhere.
+- `dieMaterials(die)` reaches every material of any die; `glow` and `reset()` use it.
+- Model dice settle after ten still physics steps in a row, so an irregular shape never freezes mid-rock. Classic dice and designs without models are unchanged.
 
 ### [1.6.0] - 2026-10-03
 

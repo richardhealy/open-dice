@@ -1,6 +1,6 @@
 {
   "name": "open-dice-dnd",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "author": "Richard Fernandez <richard@superdevs.pro>",
   "repository": {
     "type": "git",
@@ -13,6 +13,9 @@
     ".": {
       "import": "./dist/open-dice-dnd.es.js",
       "require": "./dist/open-dice-dnd.umd.js"
+    },
+    "./gltf": {
+      "import": "./dist/open-dice-dnd-gltf.es.js"
     }
   },
   "files": [
@@ -24,7 +27,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:lib": "vite build --config vite.config.lib.js",
+    "build:lib": "vite build --config vite.config.lib.js && vite build --config vite.config.gltf.js",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

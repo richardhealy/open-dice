@@ -11,6 +11,8 @@ import { createD100Body, createD100Mesh } from './dice-models/d100.js';
 import { D10_BELT_MATERIAL_INDEX } from './geometry.js';
 import { resolveSet } from './sets/index.js';
 import { setDecalsFor } from './sets/decals.js';
+import { loadedModel } from './models/loader.js';
+import { createModelDie, modelDieValue } from './models/model-die.js';
 
 // Color validation utility
 function isValidHexColor(color) {
@@ -34,6 +36,20 @@ export function createDie(type, visible = true, isFirst = true, targetNumber, fo
     const meshOptions = { set: options.set, visible };
     // A design's own decals (its d20 "20" mark, say) join the die's decals; the die's own win.
     if (options.set) decals = setDecalsFor(resolveSet(options.set), type, decals);
+
+    // A design with a loaded model for this type rolls the model: its hull is the body and its
+    // shape decides the face. Until the model loads (or when it failed) the die stays procedural.
+    const resolvedSet = options.set ? resolveSet(options.set) : null;
+    const model = resolvedSet && resolvedSet.models ? resolvedSet.models[type] : null;
+    if (model && loadedModel(model.src)) {
+        const die = createModelDie({ type, model, set: resolvedSet, visible, targetNumber, foundClosestIndex, isSecret, material });
+        if (!visible) die.mesh.visible = false;
+        if (targetScene) targetScene.add(die.mesh);
+        if (targetWorld) targetWorld.addBody(die.body);
+        die.body.linearDamping = 0.1;
+        die.body.angularDamping = 0.1;
+        return die;
+    }
     
     // Default colors for each die type
     const defaultColors = {
@@ -107,7 +123,11 @@ export function createDie(type, visible = true, isFirst = true, targetNumber, fo
     return { mesh, body, type };
 }
 
+export { dieMaterials } from './die-materials.js';
+
 export function getDieValue(die, up, targetNumber, foundClosestIndex) {
+    // A model die's replay swap was applied when it was built; its face map does the reading.
+    if (die.model) return modelDieValue(die, up);
     let maxDot = -Infinity;
     let closestIndex = 0;
     

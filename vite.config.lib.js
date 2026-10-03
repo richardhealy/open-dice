@@ -12,6 +12,7 @@ export default defineConfig({
     rollupOptions: {
       external: ['three', 'cannon-es'],
       output: {
+        banner: '/*! open-dice-dnd (MIT). Includes ConvexHull, ConvexGeometry and DecalGeometry from the three.js r130 examples, MIT License, Copyright (c) 2010-2021 three.js authors. */',
         globals: {
           three: 'THREE',
           'cannon-es': 'CANNON',

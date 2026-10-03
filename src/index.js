@@ -4,7 +4,7 @@
  */
 
 export { DiceRoller } from './DiceRoller.js';
-export { createDie, getDieValue } from './dice.js';
+export { createDie, getDieValue, dieMaterials } from './dice.js';
 export { DecalRegistry } from './decal-registry.js';
 export { SoundManager } from './sound-manager.js';
 
@@ -15,6 +15,13 @@ export { installEnvironment } from './sets/environment.js';
 export { ensureNumeralFont } from './sets/fonts/numerals.js';
 export { prepareDiceSets } from './sets/prepare.js';
 export { registerDecorArt, registerEmblemArt } from './sets/art-registry.js';
+
+// Model dice: a design's die types can be host-supplied 3D models whose shape decides the roll.
+// See README "Model dice". The GLTF loader lives at 'open-dice-dnd/gltf'.
+export { setModelLoader, clearModelCache } from './models/loader.js';
+export { MODEL_DIE_TYPES, MODEL_DIE_VALUES } from './models/spec.js';
+export { analyzeModelDie, remapModelValues } from './models/analyze.js';
+export { dieShape, shapeToGlb } from './models/shapes.js';
 import * as diceSetsNamespace from './sets/index.js';
 export const diceSets = diceSetsNamespace;
 

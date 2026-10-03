@@ -13,7 +13,7 @@ describe('DiceRoller set gating (prototype methods on a bare object)', () => {
     let fake;
     beforeEach(() => {
         _resetRegistryForTests();
-        fake = { defaultSet: null, _setAssetsReady: false, _setFor: proto._setFor, _needsSetAssets: proto._needsSetAssets };
+        fake = { defaultSet: null, _setAssetsReady: false, _setFor: proto._setFor, _modelsFor: proto._modelsFor, _needsSetAssets: proto._needsSetAssets };
     });
 
     it('resolves die.set first, then the roller default, then classic', () => {
@@ -62,7 +62,7 @@ describe('DiceRoller first-set-roll gating (C1 / I5)', () => {
             floor: null, dice: [], diceBatches: [], effects: [], isAnimating: false,
             defaultSet: null, _setAssetsReady: false, _rollGeneration: 0, _pendingSetRolls: 0, _destroyed: false,
             _clearDice() {}, _needsSetAssets() { return true; },
-            _ensureSetAssets() { return Promise.resolve(); },
+            _ensureSetAssets() { return Promise.resolve(); }, _ensureModels() { return Promise.resolve([]); },
             _startRoll: vi.fn((config) => Promise.resolve(config.length)),
             roll: proto.roll, isRolling: proto.isRolling, _ensureAnimating: proto._ensureAnimating,
         };

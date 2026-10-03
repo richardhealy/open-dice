@@ -4,6 +4,7 @@ import { setTextureAnisotropy } from './texture-cache.js';
 import { resolveSet, CLASSIC } from './index.js';
 import { collectSetImages } from './face-materials.js';
 import { collectSetDecalSources } from './decals.js';
+import { loadSetModels } from '../models/loader.js';
 
 /**
  * Load the numeral font and, when a renderer and scene are given, install the reflection
@@ -14,20 +15,26 @@ import { collectSetDecalSources } from './decals.js';
  * With a `decalRegistry` (the roller's, or your own `DecalRegistry`) and `sets` (ids or
  * definitions), every image those sets reference is loaded into the registry first, so faces
  * painted afterwards never show an image's fallback. A failed image is logged by the
- * registry and its fallback stays.
+ * registry and its fallback stays. With `sets`, their model dice's models are loaded too
+ * (through the loader given to setModelLoader), so createDie builds model dice afterwards.
  * @param {{ renderer?: object, scene?: object, decalRegistry?: object, sets?: Array<string|object> }} [options]
  * @returns {Promise<boolean>} whether the embedded font loaded
  */
 export async function prepareDiceSets({ renderer, scene, decalRegistry, sets } = {}) {
     let imagesLoaded = null;
-    if (decalRegistry && Array.isArray(sets) && sets.length > 0) {
+    let modelsLoaded = null;
+    if (Array.isArray(sets) && sets.length > 0) {
         const resolved = sets.map((s) => resolveSet(s)).filter((set) => set.id !== CLASSIC);
-        const images = [...new Set(resolved.flatMap((set) => [...collectSetImages(set), ...collectSetDecalSources(set)]))];
-        if (images.length > 0) imagesLoaded = decalRegistry.preload(images);
+        modelsLoaded = loadSetModels(resolved);
+        if (decalRegistry) {
+            const images = [...new Set(resolved.flatMap((set) => [...collectSetImages(set), ...collectSetDecalSources(set)]))];
+            if (images.length > 0) imagesLoaded = decalRegistry.preload(images);
+        }
     }
     const fontLoaded = await ensureNumeralFont();
     if (renderer && renderer.capabilities) setTextureAnisotropy(renderer.capabilities.getMaxAnisotropy());
     if (renderer && scene) installEnvironment(renderer, scene);
     if (imagesLoaded) await imagesLoaded;
+    if (modelsLoaded) await modelsLoaded;
     return fontLoaded;
 }
