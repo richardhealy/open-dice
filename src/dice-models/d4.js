@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { D4_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
-import { createD4FaceTexture } from '../face-texture.js';
+import { buildFaceMaterials } from '../sets/face-materials.js';
 
-export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#9b59b6', isSecret = false, decals = null, decalRegistry = null) {
+export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#9b59b6', isSecret = false, decals = null, decalRegistry = null, options = {}) {
     const radius = size * 1.2;
     const tab = -0.1;
     const af = Math.PI * 7 / 6;
@@ -12,7 +12,6 @@ export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 
     const chamferGeometry = getChamferGeometry(vectors, D4_GEOMETRY.faces, 0.96);
     const geometry = makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
 
-    const materials = [];
     const d4FaceTexts = [
         [[], [0, 0, 0], [2, 4, 3], [1, 3, 4], [2, 1, 4], [1, 2, 3]],
         [[], [0, 0, 0], [2, 3, 4], [3, 1, 4], [2, 4, 1], [3, 2, 1]],
@@ -29,24 +28,21 @@ export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 
       })
     );
 
-    for (let i = 0; i < faceTexts.length; ++i) {
-        const texture = createD4FaceTexture({
-            values: faceTexts[i],
-            textColor,
-            backgroundColor,
-            // In secret mode the corners were rewritten to '?' above, so decal keys won't
-            // match — the value stays hidden naturally without leaking via an icon.
-            decals,
-            decalRegistry,
-        });
-        materials.push(new THREE.MeshPhongMaterial({
-            specular: 0x172022,
-            color: diceColor,
-            shininess: 40,
-            flatShading: true,
-            map: texture
-        }));
-    }
+    // Indexed by material index: 0 is the chamfer slot ([]), 1 is unused ([0, 0, 0]), 2..5 are faces.
+    const faces = faceTexts.map((values) => (values.length ? { values } : null));
+    const materials = buildFaceMaterials({
+        type: 'd4',
+        geometry,
+        faces,
+        colors: { diceColor, textColor, backgroundColor },
+        isSecret,
+        // Secret corners were rewritten to '?' above, so decal keys cannot match — the value
+        // stays hidden without leaking through an icon.
+        decals,
+        decalRegistry,
+        set: options.set,
+        visible: options.visible !== false,
+    });
 
     const mesh = new THREE.Mesh(geometry, materials);
     mesh.castShadow = true;

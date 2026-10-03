@@ -8,6 +8,7 @@ import { createD10Mesh, createD10Body } from './dice-models/d10.js';
 import { createD12Mesh, createD12Body } from './dice-models/d12.js';
 import { createD20Mesh, createD20Body } from './dice-models/d20.js';
 import { createD100Body, createD100Mesh } from './dice-models/d100.js';
+import { D10_BELT_MATERIAL_INDEX } from './geometry.js';
 
 // Color validation utility
 function isValidHexColor(color) {
@@ -21,11 +22,14 @@ function isValidNumericColor(color) {
     return typeof color === 'number' && color >= 0 && color <= 0xffffff;
 }
 
-export function createDie(type, visible = true, isFirst = true, targetNumber, foundClosestIndex, customMaterial = null, customScene = null, customWorld = null, diceColor = null, textColor = null, backgroundColor = null, isSecret = false, decals = null, decalRegistry = null) {
+export function createDie(type, visible = true, isFirst = true, targetNumber, foundClosestIndex, customMaterial = null, customScene = null, customWorld = null, diceColor = null, textColor = null, backgroundColor = null, isSecret = false, decals = null, decalRegistry = null, options = {}) {
     // Use custom material/scene/world if provided
     const material = customMaterial || new CANNON.Material('dice');
     const targetScene = customScene;
     const targetWorld = customWorld;
+    // Dice set (id or resolved definition) and whether the mesh will ever be rendered. Hidden
+    // prediction dice get placeholder materials instead of painted textures.
+    const meshOptions = { set: options.set, visible };
     
     // Default colors for each die type
     const defaultColors = {
@@ -48,35 +52,35 @@ export function createDie(type, visible = true, isFirst = true, targetNumber, fo
     const size = 1;
     switch (type) {
         case 'd4':
-            mesh = createD4Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
+            mesh = createD4Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry, meshOptions);
             body = createD4Body(size, material);
             break;
         case 'd6':
-            mesh = createD6Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
+            mesh = createD6Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry, meshOptions);
             body = new CANNON.Body({ mass: 1, shape: new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2)), material: material });
             break;
         case 'd8':
-            mesh = createD8Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
+            mesh = createD8Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry, meshOptions);
             body = createD8Body(size, material);
             break;
         case 'd10':
-            mesh = createD10Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
+            mesh = createD10Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry, meshOptions);
             body = createD10Body(size, material);
             break;
         case 'd12':
-            mesh = createD12Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
+            mesh = createD12Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry, meshOptions);
             body = createD12Body(size, material);
             break;
         case 'd20':
-            mesh = createD20Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
+            mesh = createD20Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry, meshOptions);
             body = createD20Body(size, material);
             break;
         case 'd100':
-            mesh = createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
+            mesh = createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry, meshOptions);
             body = createD100Body(size, material);
             break;
         default:
-            mesh = createD6Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry);
+            mesh = createD6Mesh(size, targetNumber, foundClosestIndex, finalDiceColor, finalTextColor, finalBackgroundColor, isSecret, decals, decalRegistry, meshOptions);
             body = new CANNON.Body({ mass: 1, shape: new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2)), material: material });
             break;
     }
@@ -285,7 +289,7 @@ export function getDieValue(die, up, targetNumber, foundClosestIndex) {
         
         for (let i = 0; i < geometry.groups.length; i++) {
             const group = geometry.groups[i];
-            if (group.materialIndex === 0) continue;
+            if (group.materialIndex === 0 || group.materialIndex === D10_BELT_MATERIAL_INDEX) continue;
             const position = geometry.attributes.position;
             const startVertex = group.start;
             const v0 = new THREE.Vector3().fromBufferAttribute(position, startVertex);
@@ -324,7 +328,7 @@ export function getDieValue(die, up, targetNumber, foundClosestIndex) {
         
         for (let i = 0; i < geometry.groups.length; i++) {
             const group = geometry.groups[i];
-            if (group.materialIndex === 0) continue;
+            if (group.materialIndex === 0 || group.materialIndex === D10_BELT_MATERIAL_INDEX) continue;
             const position = geometry.attributes.position;
             const startVertex = group.start;
             const v0 = new THREE.Vector3().fromBufferAttribute(position, startVertex);

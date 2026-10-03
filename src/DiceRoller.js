@@ -4,6 +4,12 @@ import { createDie, getDieValue } from './dice.js';
 import { DecalRegistry } from './decal-registry.js';
 import { SoundManager } from './sound-manager.js';
 import { glow, scalePulse, haloRing, runEffectsRules } from './effects/index.js';
+import { resolveSet, CLASSIC } from './sets/index.js';
+import { prepareDiceSets } from './sets/prepare.js';
+import { setTextureAnisotropy } from './sets/texture-cache.js';
+import { resolvePixelRatio, clampPixelRatioToBuffer } from './pixel-ratio.js';
+
+const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
 // Collisions below this impact speed are too quiet to be audible without distortion.
 // Above ~12 the cap kicks in.
@@ -29,6 +35,8 @@ export class DiceRoller {
      * @param {number} [options.throwSpeed=15] - Initial throw speed
      * @param {number} [options.throwSpin=20] - Initial throw spin
      * @param {Function} [options.onRollComplete] - Callback when dice settle (main rolls only)
+     * @param {string} [options.set] - Default dice set id for every die (see setDefaultSet)
+     * @param {number} [options.pixelRatio] - Canvas pixel ratio; defaults to the device ratio capped at 2. Pass 1 to opt out.
      */
     constructor(options = {}) {
         if (!options.container) {
@@ -40,6 +48,11 @@ export class DiceRoller {
         this.height = options.height || this.container.clientHeight;
         this.throwSpeed = options.throwSpeed || 15;
         this.throwSpin = options.throwSpin || 20;
+        this._pixelRatioOption = options.pixelRatio;
+        this.pixelRatio = resolvePixelRatio(options.pixelRatio, typeof window !== 'undefined' ? window.devicePixelRatio : 1);
+        // Rendering stops while nothing on the table can change (see _shouldIdle); reset()'s fade
+        // holds it open because it empties this.dice before the dice have faded.
+        this._animationHolds = 0;
         this.onRollComplete = options.onRollComplete || null;
         // Fires once per batch as it settles, with the same {total, variances, results}
         // object plus a reference to the batch dice. Lets callers schedule per-die effects
@@ -49,6 +62,16 @@ export class DiceRoller {
         // when a batch settles; matching effects are scheduled onto `this.effects`.
         this.effectRules = options.effects || null;
         this.effects = [];
+        // Default dice set for dice that do not name their own. Resolved per roll, so a set
+        // registered later still works (see _setFor).
+        this.defaultSet = options.set || null;
+        this._setAssetsReady = false;
+        this._setAssetsPromise = null;
+        // A roll that waits for set assets must not spawn if a later roll() wiped the table
+        // meanwhile, or if the roller was destroyed. isRolling() counts the wait.
+        this._rollGeneration = 0;
+        this._pendingSetRolls = 0;
+        this._destroyed = false;
 
         this.dice = [];
         this.diceBatches = [];
@@ -92,7 +115,11 @@ export class DiceRoller {
         this.camera.updateProjectionMatrix();
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.pixelRatio = clampPixelRatioToBuffer(this.pixelRatio, this.width, this.height, this.renderer.capabilities.maxTextureSize);
+        this.renderer.setPixelRatio(this.pixelRatio);
         this.renderer.setSize(this.width, this.height);
+        // Set textures are filtered anisotropically so numerals stay sharp on tilted faces.
+        setTextureAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.container.appendChild(this.renderer.domElement);
@@ -239,8 +266,14 @@ export class DiceRoller {
             this.directionalLight.shadow.camera.updateProjectionMatrix();
         }
 
+        // The display may have changed density (window moved between screens, browser zoom).
+        const device = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
+        this.pixelRatio = clampPixelRatioToBuffer(resolvePixelRatio(this._pixelRatioOption, device), this.width, this.height, this.renderer.capabilities.maxTextureSize);
+        this.renderer.setPixelRatio(this.pixelRatio);
         this.renderer.setSize(this.width, this.height);
         this._updatePhysicsWalls(frustumSize, aspect, topBound, bottomBound);
+        // An idle table keeps its last frame; redraw it at the new size.
+        if (!this.isAnimating) this.renderer.render(this.scene, this.camera);
     }
 
     /**
@@ -269,6 +302,25 @@ export class DiceRoller {
         if (this.floor) this.floor.material.opacity = 0.5;
         this.lastTime = undefined;
 
+        // Classic rolls stay synchronous up to the spawn (so isRolling() is true as soon as
+        // roll() returns). Only the first roll that uses a set waits for the font and the
+        // environment map, a few milliseconds once.
+        const generation = ++this._rollGeneration;
+        if (this._needsSetAssets(diceConfig)) {
+            this._pendingSetRolls++;
+            return this._ensureSetAssets().then(() => {
+                this._pendingSetRolls--;
+                // A later roll() wiped the table while we waited, or the roller is gone: never
+                // spawn. The promise stays pending, exactly as a wiped batch's promise always has.
+                if (this._destroyed || generation !== this._rollGeneration) return new Promise(() => {});
+                return this._startRoll(diceConfig);
+            });
+        }
+        return this._startRoll(diceConfig);
+    }
+
+    /** Predict, spawn and resolve one main batch. @private */
+    _startRoll(diceConfig) {
         const { closestIndexes, seeds } = this._preSimulateInLiveWorld(diceConfig);
 
         return new Promise((resolve) => {
@@ -304,7 +356,7 @@ export class DiceRoller {
      * `addDice()` instead.
      */
     isRolling() {
-        return this.diceBatches.some(b => !b.resolved && b.dice.length > 0);
+        return this._pendingSetRolls > 0 || this.diceBatches.some(b => !b.resolved && b.dice.length > 0);
     }
 
     /**
@@ -324,6 +376,7 @@ export class DiceRoller {
         const effect = spec.create(ctx);
         if (effect && typeof effect.update === 'function') {
             this.effects.push(effect);
+            this._ensureAnimating();
             return effect;
         }
         return null;
@@ -339,6 +392,54 @@ export class DiceRoller {
      */
     setEffectRules(rules) {
         this.effectRules = rules;
+    }
+
+    /** Change the default dice set for later rolls. Pass null to return to classic dice. */
+    setDefaultSet(id) {
+        this.defaultSet = id || null;
+    }
+
+    /**
+     * Prepare dice sets ahead of the first roll: loads the numeral font, installs the
+     * environment map, and paints every face of every die type for the listed sets so the
+     * first roll does no painting. Optional; rolls work without it.
+     * @param {string[]} ids
+     */
+    async preloadSets(ids = []) {
+        await this._ensureSetAssets();
+        for (const id of ids) {
+            const set = resolveSet(id);
+            if (set.id === CLASSIC) continue;
+            for (const type of DIE_TYPES) {
+                const halves = type === 'd100' ? [true, false] : [true];
+                for (const isFirst of halves) {
+                    const die = createDie(type, true, isFirst, undefined, undefined, this.diceMaterial, null, null,
+                        null, null, null, false, null, this.decalRegistry, { set });
+                    die.mesh.material.forEach((m) => m.dispose());
+                }
+            }
+        }
+    }
+
+    /** Resolved set for one die config: die.set, then the roller default, then classic. @private */
+    _setFor(diceRoll) {
+        return resolveSet(diceRoll.set || this.defaultSet);
+    }
+
+    /** True when this config has a non-classic die and the font/environment are not ready. @private */
+    _needsSetAssets(diceConfig) {
+        if (this._setAssetsReady) return false;
+        return diceConfig.some((d) => this._setFor(d).id !== CLASSIC);
+    }
+
+    /** Load the numeral font and install the environment map, once per roller. @private */
+    _ensureSetAssets() {
+        if (!this._setAssetsPromise) {
+            this._setAssetsPromise = prepareDiceSets({ renderer: this.renderer, scene: this.scene }).then(() => {
+                this._setAssetsReady = true;
+            });
+        }
+        return this._setAssetsPromise;
     }
 
     /**
@@ -362,6 +463,8 @@ export class DiceRoller {
         // for spectator-side replay, where rolls arrive over the wire and
         // should stack visually rather than crash through each other.
         await this._waitForAllBatchesResolved();
+        if (this._needsSetAssets(diceConfig)) await this._ensureSetAssets();
+        if (this._destroyed) return new Promise(() => {});
 
         const { closestIndexes, seeds } = this._preSimulateInLiveWorld(diceConfig);
 
@@ -419,7 +522,8 @@ export class DiceRoller {
                     diceRoll.rolled, closestIndex,
                     this.diceMaterial, this.scene, this.world,
                     diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
-                    diceRoll.isSecret, diceRoll.decals, this.decalRegistry
+                    diceRoll.isSecret, diceRoll.decals, this.decalRegistry,
+                    { set: this._setFor(diceRoll) }
                 );
                 if (!die) { cidx++; continue; }
 
@@ -644,9 +748,14 @@ export class DiceRoller {
 
             if (diceToFade.length === 0) {
                 if (this.floor) this.floor.material.opacity = 0;
+                if (!this.isAnimating && this.renderer) this.renderer.render(this.scene, this.camera);
                 resolve();
                 return;
             }
+
+            // Keep the loop rendering while the dice fade; it idles again once they are gone.
+            this._animationHolds++;
+            this._ensureAnimating();
 
             const fadeDuration = 500;
             const startTime = performance.now();
@@ -679,6 +788,7 @@ export class DiceRoller {
                         this.scene.remove(d.mesh);
                         this.world.removeBody(d.body);
                     });
+                    this._animationHolds--;
                     resolve();
                 }
             };
@@ -733,8 +843,23 @@ export class DiceRoller {
         return d.targetNumber;
     }
 
+    /**
+     * True when nothing on the table can change: every die at rest, every batch resolved,
+     * no effect running, no roll waiting for assets and no fade in progress. The loop stops
+     * then; the canvas keeps its last frame, and roll(), addDice(), playEffect() and reset()
+     * start it again. Before this the loop ran for the life of the page.
+     * @private
+     */
+    _shouldIdle() {
+        if (this._pendingSetRolls > 0 || this._animationHolds > 0) return false;
+        if (this.effects.length > 0) return false;
+        if (this.diceBatches.some((b) => !b.resolved && b.dice.length > 0)) return false;
+        return this.dice.every((d) => this._isBodySettled(d.body));
+    }
+
     /** @private */
     _ensureAnimating() {
+        if (this._destroyed) return;
         if (!this.isAnimating) {
             this.isAnimating = true;
             this.lastTime = undefined;
@@ -750,8 +875,6 @@ export class DiceRoller {
      */
     _animate(time) {
         if (!this.isAnimating) return;
-
-        this.animationFrameId = requestAnimationFrame(this._animate.bind(this));
 
         if (this.lastTime !== undefined) {
             const dt = (time - this.lastTime) / 1000;
@@ -790,6 +913,13 @@ export class DiceRoller {
         }
 
         this.renderer.render(this.scene, this.camera);
+
+        if (this._shouldIdle()) {
+            this.isAnimating = false;
+            this.animationFrameId = null;
+            return;
+        }
+        this.animationFrameId = requestAnimationFrame(this._animate.bind(this));
     }
 
     /**
@@ -812,6 +942,7 @@ export class DiceRoller {
      * Destroy the dice roller instance and clean up resources
      */
     destroy() {
+        this._destroyed = true;
         this.isAnimating = false;
 
         if (this.animationFrameId) {

@@ -1,6 +1,12 @@
 import * as THREE from 'three';
+import { createCanvas } from './sets/canvas-factory.js';
 
 const UNDERLINED_TEXTS = new Set(['6', '9', '60', '90']);
+
+/** True for the face values that carry an orientation underline. */
+export function isUnderlined(text) {
+    return UNDERLINED_TEXTS.has(String(text));
+}
 
 function calculateTextureSize(approx) {
     return Math.max(128, Math.pow(2, Math.floor(Math.log(approx) / Math.log(2))));
@@ -11,7 +17,7 @@ function fillBackground(ctx, ts, color) {
     ctx.fillRect(0, 0, ts, ts);
 }
 
-function drawText(ctx, text, ts, color, textOffsetY) {
+export function drawText(ctx, text, ts, color, textOffsetY) {
     ctx.font = ts / (1 + 2 * 1.0) + 'pt Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -20,7 +26,7 @@ function drawText(ctx, text, ts, color, textOffsetY) {
     const centerY = ts / 2 + textOffsetY;
     ctx.fillText(text, centerX, centerY);
 
-    if (UNDERLINED_TEXTS.has(text)) {
+    if (isUnderlined(text)) {
         const textWidth = ctx.measureText(text).width;
         const underlineY = centerY + ts * 0.165;
         ctx.beginPath();
@@ -32,7 +38,7 @@ function drawText(ctx, text, ts, color, textOffsetY) {
     }
 }
 
-function drawDecalImage(ctx, img, decal, ts) {
+export function drawDecalImage(ctx, img, decal, ts) {
     const scale = decal.scale ?? 1;
     const offsetX = (decal.offsetX ?? 0) * ts;
     const offsetY = (decal.offsetY ?? 0) * ts;
@@ -73,10 +79,9 @@ export function createFaceTexture({
     isSecret = false,
     textOffsetY = 0,
 }) {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
     const ts = calculateTextureSize(50 / 2 + 50 * 1.0) * 2;
-    canvas.width = canvas.height = ts;
+    const canvas = createCanvas(ts);
+    const ctx = canvas.getContext('2d');
     fillBackground(ctx, ts, backgroundColor);
 
     const texture = new THREE.Texture(canvas);
@@ -125,7 +130,7 @@ function drawD4CornerText(ctx, text, ts, color) {
     ctx.fillText(text, ts / 2, ts / 2 - ts * 0.3);
 }
 
-function drawD4CornerDecal(ctx, img, decal, ts) {
+export function drawD4CornerDecal(ctx, img, decal, ts) {
     const scale = decal.scale ?? 1;
     const offsetX = (decal.offsetX ?? 0) * ts;
     const offsetY = (decal.offsetY ?? 0) * ts;
@@ -162,10 +167,9 @@ export function createD4FaceTexture({
     decals,
     decalRegistry,
 }) {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
     const ts = calculateTextureSize(50 / 2 + 50 * 2) * 2;
-    canvas.width = canvas.height = ts;
+    const canvas = createCanvas(ts);
+    const ctx = canvas.getContext('2d');
 
     const texture = new THREE.Texture(canvas);
     texture.needsUpdate = true;

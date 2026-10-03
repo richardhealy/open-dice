@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { D10_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
-import { createFaceTexture } from '../face-texture.js';
+import { buildFaceMaterials } from '../sets/face-materials.js';
 
-export function createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#e67e22', isSecret = false, decals = null, decalRegistry = null) {
+export function createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#e67e22', isSecret = false, decals = null, decalRegistry = null, options = {}) {
     const radius = size * 0.9;
     const tab = 0;
     const af = Math.PI * 6 / 5;
@@ -14,7 +14,6 @@ export function createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, d
 
     const geometry = makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
 
-    const materials = [];
     let faceValues = [];
     if (isFirst) {
       faceValues = ['', '1', '0', '2', '9', '3', '8', '4', '7', '5', '6'];
@@ -36,32 +35,20 @@ export function createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, d
       }
     }
 
-    let maxMaterialIndex = 0;
-    for (let i = 0; i < geometry.groups.length; i++) {
-        maxMaterialIndex = Math.max(maxMaterialIndex, geometry.groups[i].materialIndex);
-    }
-
-    for (let i = 0; i <= maxMaterialIndex; i++) {
-        const value = i > 0 && i < faceValues.length ? faceValues[i].toString() : '';
-        const decal = (value && decals) ? decals[value] : null;
-        const texture = createFaceTexture({
-            text: value,
-            textColor,
-            backgroundColor,
-            decal,
-            decalRegistry,
-            isSecret,
-            textOffsetY: 16,
-        });
-
-        materials.push(new THREE.MeshPhongMaterial({
-            specular: 0x172022,
-            color: diceColor,
-            shininess: 40,
-            flatShading: true,
-            map: texture
-        }));
-    }
+    // Indexed by material index: 0 is the chamfer slot; faces start at 1.
+    const faces = faceValues.map((value, i) => (i > 0 && String(value).trim() !== '' ? { text: String(value) } : null));
+    const materials = buildFaceMaterials({
+        type: 'd100',
+        geometry,
+        faces,
+        colors: { diceColor, textColor, backgroundColor },
+        isSecret,
+        decals,
+        decalRegistry,
+        textOffsetY: 16,
+        set: options.set,
+        visible: options.visible !== false,
+    });
 
     const mesh = new THREE.Mesh(geometry, materials);
     mesh.castShadow = true;

@@ -7,3 +7,6 @@ dist
 .idea
 .cursor/
 *.md
+# Specs and plans live in docs/ and are tracked despite the *.md rule above.
+!docs/**/*.md
+test/render/out/

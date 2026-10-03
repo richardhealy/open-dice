@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { D20_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
-import { createFaceTexture } from '../face-texture.js';
+import { buildFaceMaterials } from '../sets/face-materials.js';
 
-export function createD20Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#f39c12', isSecret = false, decals = null, decalRegistry = null) {
+export function createD20Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#f39c12', isSecret = false, decals = null, decalRegistry = null, options = {}) {
     const radius = size;
     const tab = -0.2;
     const af = -Math.PI / 4 / 2;
@@ -14,7 +14,6 @@ export function createD20Mesh(size, targetNumber, foundClosestIndex, diceColor =
 
     const geometry = makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
 
-    const materials = [];
 
     const faceValues = [' ', '0', '1', '2', '3', '4', '5', '6', '7', '8',
         '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20'];
@@ -31,45 +30,21 @@ export function createD20Mesh(size, targetNumber, foundClosestIndex, diceColor =
       }
     }
 
-    let maxMaterialIndex = 0;
-    for (let i = 0; i < geometry.groups.length; i++) {
-        maxMaterialIndex = Math.max(maxMaterialIndex, geometry.groups[i].materialIndex);
-    }
-
-    for (let i = 0; i <= maxMaterialIndex; i++) {
-        const value = i > 0 && i < faceValues.length ? faceValues[i] : '';
-        const decal = (value && decals) ? decals[value] : null;
-        const texture = createFaceTexture({
-            text: value,
-            textColor,
-            backgroundColor,
-            decal,
-            decalRegistry,
-            isSecret,
-        });
-        // d20 needs these specific texture settings for correct orientation.
-        texture.flipY = true;
-        texture.generateMipmaps = false;
-        texture.minFilter = THREE.LinearFilter;
-        texture.magFilter = THREE.LinearFilter;
-        texture.wrapS = THREE.ClampToEdgeWrapping;
-        texture.wrapT = THREE.ClampToEdgeWrapping;
-
-        const material = new THREE.MeshPhongMaterial({
-            specular: 0x172022,
-            color: diceColor,
-            shininess: 40,
-            flatShading: true,
-            map: texture
-        });
-        material.needsUpdate = true;
-        material.transparent = false;
-        material.opacity = 1.0;
-        material.alphaTest = 0;
-        material.side = THREE.FrontSide;
-
-        materials.push(material);
-    }
+    // Indexed by material index: 0 is the chamfer slot; faces start at 1.
+    const faces = faceValues.map((value, i) => (i > 0 && String(value).trim() !== '' ? { text: String(value) } : null));
+    const materials = buildFaceMaterials({
+        type: 'd20',
+        geometry,
+        faces,
+        colors: { diceColor, textColor, backgroundColor },
+        isSecret,
+        decals,
+        decalRegistry,
+        // The d20 has always used these texture flags; the classic path keeps them.
+        textureTuning: { flipY: true, generateMipmaps: false, linearFilter: true, clamp: true },
+        set: options.set,
+        visible: options.visible !== false,
+    });
 
     const mesh = new THREE.Mesh(geometry, materials);
     mesh.castShadow = true;
