@@ -7,7 +7,7 @@ import { glow, scalePulse, haloRing, runEffectsRules } from './effects/index.js'
 import { resolveSet, CLASSIC } from './sets/index.js';
 import { prepareDiceSets } from './sets/prepare.js';
 import { setTextureAnisotropy } from './sets/texture-cache.js';
-import { resolvePixelRatio } from './pixel-ratio.js';
+import { resolvePixelRatio, clampPixelRatioToBuffer } from './pixel-ratio.js';
 
 const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
@@ -48,7 +48,11 @@ export class DiceRoller {
         this.height = options.height || this.container.clientHeight;
         this.throwSpeed = options.throwSpeed || 15;
         this.throwSpin = options.throwSpin || 20;
+        this._pixelRatioOption = options.pixelRatio;
         this.pixelRatio = resolvePixelRatio(options.pixelRatio, typeof window !== 'undefined' ? window.devicePixelRatio : 1);
+        // Rendering stops while nothing on the table can change (see _shouldIdle); reset()'s fade
+        // holds it open because it empties this.dice before the dice have faded.
+        this._animationHolds = 0;
         this.onRollComplete = options.onRollComplete || null;
         // Fires once per batch as it settles, with the same {total, variances, results}
         // object plus a reference to the batch dice. Lets callers schedule per-die effects
@@ -111,6 +115,7 @@ export class DiceRoller {
         this.camera.updateProjectionMatrix();
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.pixelRatio = clampPixelRatioToBuffer(this.pixelRatio, this.width, this.height, this.renderer.capabilities.maxTextureSize);
         this.renderer.setPixelRatio(this.pixelRatio);
         this.renderer.setSize(this.width, this.height);
         // Set textures are filtered anisotropically so numerals stay sharp on tilted faces.
@@ -261,8 +266,14 @@ export class DiceRoller {
             this.directionalLight.shadow.camera.updateProjectionMatrix();
         }
 
+        // The display may have changed density (window moved between screens, browser zoom).
+        const device = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
+        this.pixelRatio = clampPixelRatioToBuffer(resolvePixelRatio(this._pixelRatioOption, device), this.width, this.height, this.renderer.capabilities.maxTextureSize);
+        this.renderer.setPixelRatio(this.pixelRatio);
         this.renderer.setSize(this.width, this.height);
         this._updatePhysicsWalls(frustumSize, aspect, topBound, bottomBound);
+        // An idle table keeps its last frame; redraw it at the new size.
+        if (!this.isAnimating) this.renderer.render(this.scene, this.camera);
     }
 
     /**
@@ -365,6 +376,7 @@ export class DiceRoller {
         const effect = spec.create(ctx);
         if (effect && typeof effect.update === 'function') {
             this.effects.push(effect);
+            this._ensureAnimating();
             return effect;
         }
         return null;
@@ -736,9 +748,14 @@ export class DiceRoller {
 
             if (diceToFade.length === 0) {
                 if (this.floor) this.floor.material.opacity = 0;
+                if (!this.isAnimating && this.renderer) this.renderer.render(this.scene, this.camera);
                 resolve();
                 return;
             }
+
+            // Keep the loop rendering while the dice fade; it idles again once they are gone.
+            this._animationHolds++;
+            this._ensureAnimating();
 
             const fadeDuration = 500;
             const startTime = performance.now();
@@ -771,6 +788,7 @@ export class DiceRoller {
                         this.scene.remove(d.mesh);
                         this.world.removeBody(d.body);
                     });
+                    this._animationHolds--;
                     resolve();
                 }
             };
@@ -825,6 +843,20 @@ export class DiceRoller {
         return d.targetNumber;
     }
 
+    /**
+     * True when nothing on the table can change: every die at rest, every batch resolved,
+     * no effect running, no roll waiting for assets and no fade in progress. The loop stops
+     * then; the canvas keeps its last frame, and roll(), addDice(), playEffect() and reset()
+     * start it again. Before this the loop ran for the life of the page.
+     * @private
+     */
+    _shouldIdle() {
+        if (this._pendingSetRolls > 0 || this._animationHolds > 0) return false;
+        if (this.effects.length > 0) return false;
+        if (this.diceBatches.some((b) => !b.resolved && b.dice.length > 0)) return false;
+        return this.dice.every((d) => this._isBodySettled(d.body));
+    }
+
     /** @private */
     _ensureAnimating() {
         if (this._destroyed) return;
@@ -843,8 +875,6 @@ export class DiceRoller {
      */
     _animate(time) {
         if (!this.isAnimating) return;
-
-        this.animationFrameId = requestAnimationFrame(this._animate.bind(this));
 
         if (this.lastTime !== undefined) {
             const dt = (time - this.lastTime) / 1000;
@@ -883,6 +913,13 @@ export class DiceRoller {
         }
 
         this.renderer.render(this.scene, this.camera);
+
+        if (this._shouldIdle()) {
+            this.isAnimating = false;
+            this.animationFrameId = null;
+            return;
+        }
+        this.animationFrameId = requestAnimationFrame(this._animate.bind(this));
     }
 
     /**

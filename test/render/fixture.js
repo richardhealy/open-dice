@@ -30,13 +30,14 @@ function poseFor(type) {
     return tilt.multiply(q);
 }
 
-window.__renderDie = async (type, setId) => {
+// `half` is 'tens' to render the second die of a d100 pair (isFirst = false), else the units.
+window.__renderDie = async (type, setId, half = 'units') => {
     if (setId !== 'classic' && typeof roller.preloadSets === 'function') {
         await roller.preloadSets([setId]);
     }
     if (current) roller.scene.remove(current.mesh);
     const options = setId === 'classic' ? {} : { set: setId };
-    const die = createDie(type, true, true, undefined, undefined, null, roller.scene, null,
+    const die = createDie(type, true, half !== 'tens', undefined, undefined, null, roller.scene, null,
         null, null, null, false, null, null, options);
     die.mesh.quaternion.copy(poseFor(type));
     die.mesh.position.set(0, 1.2, 0);
@@ -52,7 +53,7 @@ window.__renderDie = async (type, setId) => {
     ctx.fillStyle = '#2b2f36';
     ctx.fillRect(0, 0, px, px);
     ctx.drawImage(roller.renderer.domElement, 0, 0, px, px);
-    window.__renders[`${setId}-${type}`] = ctx.getImageData(0, 0, px, px).data;
+    window.__renders[`${setId}-${type}${half === 'tens' ? '-tens' : ''}`] = ctx.getImageData(0, 0, px, px).data;
     return out.toDataURL('image/png');
 };
 

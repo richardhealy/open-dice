@@ -9,3 +9,15 @@ export function resolvePixelRatio(option, deviceRatio) {
     const device = typeof deviceRatio === 'number' && Number.isFinite(deviceRatio) && deviceRatio > 0 ? deviceRatio : 1;
     return Math.min(device, 2);
 }
+
+/**
+ * Keep the drawing buffer (css size x ratio) within the GPU's maximum texture size, which a
+ * canvas sized to a large map image can exceed at 2x. Never drops below 1: a canvas that is
+ * already too large at 1x is the caller's situation, not ours to shrink.
+ */
+export function clampPixelRatioToBuffer(ratio, width, height, maxSize) {
+    if (!(maxSize > 0)) return ratio;
+    const largest = Math.max(width || 0, height || 0);
+    if (!(largest > 0)) return ratio;
+    return Math.max(1, Math.min(ratio, maxSize / largest));
+}

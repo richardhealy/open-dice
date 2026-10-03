@@ -85,10 +85,10 @@ describe('face painter', () => {
         expect(callsNamed(canvas, 'putImageData')).toHaveLength(0);
     });
 
-    it('MR map paints inlay numerals in the inlay metal', () => {
+    it('MR map paints inlay numerals as gilded paint (partly metallic, rougher) so they read gold on unlit faces too', () => {
         const { canvas } = paintFace({ set: INLAY, type: 'd12', face: { text: '12' }, mode: 'mr' });
         expect(fillTexts(canvas)).toEqual(['12']);
-        expect(stylesSet(canvas).at(-1)).toBe('rgb(0, 71, 255)');
+        expect(stylesSet(canvas).at(-1)).toBe('rgb(0, 102, 140)');       // roughness 0.4, metalness 0.55: keeps a diffuse gold response
     });
 
     it('emissive map is black with glowing numerals only for the glow style', () => {

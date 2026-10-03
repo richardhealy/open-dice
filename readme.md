@@ -68,6 +68,7 @@ new DiceRoller({
     sounds,              // string[] of audio URLs (collision sfx)
     soundVolume,         // number 0..1, default 1
     effects,             // rule list — see "Settled Effects"
+    pixelRatio,          // number, default min(devicePixelRatio, 2); pass 1 to opt out
 })
 ```
 

@@ -15,8 +15,10 @@ const updateBaseline = args.includes('--update-baseline');
 const previews = args.includes('--previews');
 const setsArg = args.find((a) => a.startsWith('--sets='));
 const PORT = 5178;
-const CLASSIC_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];   // every type has a pre-branch baseline
-const TYPES = ['d20', 'd6', 'd10', 'd100'];                                 // set renders and comparisons
+const CLASSIC_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100', 'd100-tens'];   // every type has a pre-branch baseline
+const TYPES = ['d20', 'd6', 'd10', 'd100', 'd100-tens'];                                 // set renders and comparisons
+// 'd100-tens' renders the second die of a d100 pair (faces 00..90).
+const split = (type) => (type.endsWith('-tens') ? [type.slice(0, -5), 'tens'] : [type, 'units']);
 const CLASSIC_TOLERANCE = 0.005;
 const SET_MIN_DIFF = 0.05;
 
@@ -69,7 +71,7 @@ try {
 
     for (const setId of setIds) {
         for (const type of (setId === 'classic' ? CLASSIC_TYPES : TYPES)) {
-            const dataUrl = await page.evaluate(([s, t]) => window.__renderDie(t, s), [setId, type]);
+            const dataUrl = await page.evaluate(([s, t, h]) => window.__renderDie(t, s, h), [setId, ...split(type)]);
             savePng(dataUrl, resolve(outDir, `${setId}-${type}.png`));
             if (previews && setId !== 'classic') {
                 mkdirSync(previewDir, { recursive: true });
@@ -113,6 +115,21 @@ try {
         const ok = d >= SET_MIN_DIFF;
         console.log(`${ok ? 'PASS' : 'FAIL'} ${premium[i]}-d20 differs from ${premium[i - 1]}-d20: ${(d * 100).toFixed(1)}% (needs >= ${(SET_MIN_DIFF * 100).toFixed(0)}%)`);
         if (!ok) failures++;
+    }
+
+    // The 2x path: a page at devicePixelRatio 2 must get a 2x drawing buffer (the fix for
+    // pixelated numerals on Retina displays). The 1x page above cannot see this.
+    {
+        const hidpi = await browser.newContext({ viewport: { width: 400, height: 400 }, deviceScaleFactor: 2 });
+        const page2 = await hidpi.newPage();
+        await page2.goto(`http://localhost:${PORT}/`);
+        await page2.waitForFunction(() => window.__ready === true, null, { timeout: 20000 });
+        await page2.evaluate(() => window.__renderDie('d20', 'ruby-jewel'));
+        const buffer = await page2.evaluate(() => { const c = document.querySelector('#stage canvas'); return [c.width, c.height, c.clientWidth]; });
+        const ok = buffer[0] === 640 && buffer[1] === 640 && buffer[2] === 320;
+        console.log(`${ok ? 'PASS' : 'FAIL'} pixel ratio 2: drawing buffer ${buffer[0]}x${buffer[1]} for a ${buffer[2]}px canvas (needs 640x640)`);
+        if (!ok) failures++;
+        await hidpi.close();
     }
 
     if (errors.length) {

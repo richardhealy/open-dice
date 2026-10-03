@@ -1,5 +1,6 @@
 import { ensureNumeralFont } from './fonts/numerals.js';
 import { installEnvironment } from './environment.js';
+import { setTextureAnisotropy } from './texture-cache.js';
 
 /**
  * Load the numeral font and, when a renderer and scene are given, install the reflection
@@ -10,6 +11,7 @@ import { installEnvironment } from './environment.js';
  */
 export async function prepareDiceSets({ renderer, scene } = {}) {
     const fontLoaded = await ensureNumeralFont();
+    if (renderer && renderer.capabilities) setTextureAnisotropy(renderer.capabilities.getMaxAnisotropy());
     if (renderer && scene) installEnvironment(renderer, scene);
     return fontLoaded;
 }

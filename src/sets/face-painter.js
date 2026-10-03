@@ -37,6 +37,14 @@ export function shade(hex, amount) {
     return rgbToHex(rgb.map((c) => (amount >= 0 ? c + (255 - c) * amount : c * (1 + amount))));
 }
 
+/**
+ * Inlay numerals are gilded paint rather than mirror metal: a pure metal has no diffuse
+ * response, so gold numerals went dark on every face not catching the key light. Partly
+ * metallic and rougher, they keep a gold colour under ambient light and still glint.
+ */
+export const INLAY_ROUGHNESS = 0.4;
+export const INLAY_METALNESS = 0.55;
+
 /** Packed metal-roughness colour: three reads roughness from G and metalness from B. */
 export function mrColor(roughness, metalness) {
     return `rgb(0, ${Math.round(roughness * 255)}, ${Math.round(metalness * 255)})`;
@@ -191,8 +199,7 @@ export function paintNumeral(ctx, text, { x, y, sizePx, set, mode }) {
         drawUnderline(ctx, text, x + dx, y + dy, sizePx, fill);
     };
     if (mode === 'mr') {
-        const metal = METALS[set.numeral.metal];
-        glyph(mrColor(metal.roughness, metal.metalness));
+        glyph(mrColor(INLAY_ROUGHNESS, INLAY_METALNESS));
     } else if (mode === 'emissive') {
         glyph(set.numeral.glow.color);
     } else if (style === 'engraved') {
