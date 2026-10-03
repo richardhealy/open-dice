@@ -21,6 +21,7 @@ const TYPES = ['d20', 'd6', 'd10', 'd100', 'd100-tens'];                        
 const split = (type) => (type.endsWith('-tens') ? [type.slice(0, -5), 'tens'] : [type, 'units']);
 const CLASSIC_TOLERANCE = 0.005;
 const SET_MIN_DIFF = 0.05;
+const IMAGE_MIN_DIFF = 0.01;   // a set's render once its images load vs its first paint without them
 
 const outDir = resolve(here, 'out');
 const baselineDir = resolve(here, 'baseline');
@@ -114,6 +115,24 @@ try {
         const d = await page.evaluate(([a, b]) => window.__diff(a, b), [`${premium[i]}-d20`, `${premium[i - 1]}-d20`]);
         const ok = d >= SET_MIN_DIFF;
         console.log(`${ok ? 'PASS' : 'FAIL'} ${premium[i]}-d20 differs from ${premium[i - 1]}-d20: ${(d * 100).toFixed(1)}% (needs >= ${(SET_MIN_DIFF * 100).toFixed(0)}%)`);
+        if (!ok) failures++;
+    }
+
+    // Image textures: the fixture registers `fixture-image`, a test-only set whose body and
+    // decoration are data-URL PNGs painted in the page (no network). The first paint, before
+    // the images load, must show the fallback; after preloadSets the die must repaint with the
+    // images (differs from that first paint) and differ from Classic like any other set.
+    // The set is excluded from the catalogue loop above and from --previews.
+    {
+        const unloaded = await page.evaluate(() => window.__renderDie('d20', 'fixture-image', 'units',
+            { preload: false, key: 'fixture-image-d20-unloaded' }));
+        savePng(unloaded, resolve(outDir, 'fixture-image-d20-unloaded.png'));
+        const loaded = await page.evaluate(() => window.__renderDie('d20', 'fixture-image'));
+        savePng(loaded, resolve(outDir, 'fixture-image-d20.png'));
+        const vsClassic = await page.evaluate(([a, b]) => window.__diff(a, b), ['fixture-image-d20', 'classic-d20']);
+        const vsUnloaded = await page.evaluate(([a, b]) => window.__diff(a, b), ['fixture-image-d20', 'fixture-image-d20-unloaded']);
+        const ok = vsClassic >= SET_MIN_DIFF && vsUnloaded >= IMAGE_MIN_DIFF;
+        console.log(`${ok ? 'PASS' : 'FAIL'} fixture-image (image textures) renders: ${(vsClassic * 100).toFixed(1)}% from classic (needs >= ${(SET_MIN_DIFF * 100).toFixed(0)}%), ${(vsUnloaded * 100).toFixed(1)}% from the unloaded first paint (needs >= ${(IMAGE_MIN_DIFF * 100).toFixed(0)}%)`);
         if (!ok) failures++;
     }
 
