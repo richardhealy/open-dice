@@ -42,7 +42,7 @@ describe('DiceRoller set gating (prototype methods on a bare object)', () => {
 
 describe('public exports', () => {
     it('exposes the set API', () => {
-        for (const name of ['registerDiceSet', 'listDiceSets', 'getDiceSet', 'resolveSet', 'clearDiceSetCaches', 'installEnvironment', 'ensureNumeralFont', 'prepareDiceSets']) {
+        for (const name of ['registerDiceSet', 'listDiceSets', 'getDiceSet', 'resolveSet', 'clearDiceSetCaches', 'installEnvironment', 'ensureNumeralFont', 'prepareDiceSets', 'registerDecorArt', 'registerEmblemArt']) {
             expect(typeof lib[name]).toBe('function');
         }
         expect(lib.CLASSIC_DICE_SET).toBe('classic');
