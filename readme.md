@@ -269,7 +269,7 @@ emblems: {
 }
 ```
 
-Keys are face values as strings and follow the same lookup as decals (per corner on the d4, the tens value on the d100). Built-in emblems: `sunburst`, `star`, `crown`, `skull`. An emblem takes `metal` or `color` (default: the numeral colour), `scale` 0.3..1.2 (0.8) and `relief` 0..1 (0.5), and is painted into every map the numeral would have used. A decal on the same value wins over the emblem: the host's explicit icon beats the set's.
+Keys are face values as strings, looked up per corner on the d4. The d100 pair never carries an emblem: a percentile roll is read from two faces, and an emblem on either would hide a digit (a decal can still replace a face there, per roll). Built-in emblems: `sunburst`, `star`, `crown`, `skull`. An emblem takes `metal` or `color` (default: the numeral colour), `scale` 0.3..1.2 (0.8) and `relief` 0..1 (0.5), and is painted into every map the numeral would have used; a face that carries an emblem gets its own normal map, so `relief` raises it like a decoration layer. A decal on the same value wins over the emblem: the host's explicit icon beats the set's.
 
 ### Image textures
 
@@ -595,7 +595,7 @@ npm run build
 - Three new procedural patterns: `pour` (marbled pour with optional lacing), `circuit` (seeded traces and pads, also the emissive mask) and `felt`; every pattern accepts `perFace` for a different seed on each face
 - Glowing bodies: `body.emissive` lights the pattern itself; `body.vignette` is now a tunable field
 - Decoration becomes a list of up to six layers: metal arts, flat-colour arts with optional glow, and image layers; new built-in arts `frame`, `corners`, `knotwork` and `vines`
-- `emblems` replace the numeral on chosen face values with path art (built-in `sunburst`, `skull`, `star`, `crown`), painted with metal or colour and relief
+- `emblems` replace the numeral on chosen face values with path art (built-in `sunburst`, `skull`, `star`, `crown`), painted with metal or colour and relief; the d100 pair never carries one, so percentile rolls stay readable
 - Image textures: `body.image` and `body.normalImage` paint a set from PNGs, preloaded with `preloadSets()` and repainted when they arrive; a set without a roller paints its fallback and never throws
 - Second embedded numeral font `OpenDiceMono`; `numeral.font` takes either embedded family or any name for the browser to resolve
 - `registerDecorArt()` and `registerEmblemArt()` accept SVG path data for your own borders and emblems

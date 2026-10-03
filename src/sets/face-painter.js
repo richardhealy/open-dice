@@ -491,16 +491,29 @@ export function paintNumeral(ctx, text, { x, y, sizePx, set, mode, intensity }) 
 
 /**
  * The emblem for a face value in canonical form `{ art, metal, color, scale, relief }`, or
- * null. A bare art id means the numeral colour at the default scale.
+ * null. A bare art id means the numeral colour at the default scale. The d100 pair never
+ * carries one: a percentile roll is read from two faces, and an emblem on either would hide
+ * a digit (a host's decal can still replace a face there, per roll).
  */
-export function faceEmblem(set, value) {
-    if (!set.emblems || value === undefined || value === null) return null;
+export function faceEmblem(set, value, type = null) {
+    if (!set.emblems || value === undefined || value === null || type === 'd100') return null;
     const emblem = set.emblems[String(value)];
     if (!emblem) return null;
     if (typeof emblem === 'string') {
         return { art: emblem, metal: null, color: set.numeral.color, scale: DEFAULT_EMBLEM_SCALE, relief: DEFAULT_EMBLEM_RELIEF };
     }
     return emblem;
+}
+
+/** The strongest relief among the emblems on a face (its text, or each d4 corner); 0 when none. */
+export function faceEmblemRelief(set, type, face) {
+    if (!face || !set.emblems) return 0;
+    let max = 0;
+    for (const value of face.values ? face.values : [face.text]) {
+        const emblem = faceEmblem(set, value, type);
+        if (emblem) max = Math.max(max, emblemRelief(emblem));
+    }
+    return max;
 }
 
 /**
@@ -541,14 +554,14 @@ function decalFor(decals, decalRegistry, value, isSecret) {
  * One face value: a loaded decal, else the set's emblem for that value, else the numeral.
  * `radius` is the face circumradius the emblem is sized against.
  */
-function paintValue(ctx, ts, value, { set, isSecret, decals, decalRegistry, mode, maxRelief, intensity }, pending, place, drawDecal) {
+function paintValue(ctx, ts, value, { set, type, isSecret, decals, decalRegistry, mode, maxRelief, intensity }, pending, place, drawDecal) {
     const { decal, image } = decalFor(decals, decalRegistry, value, isSecret);
     if (image) {
         if (mode === 'albedo') drawDecal(image, decal);
         return;
     }
     if (decal) pending.push(decal.src);
-    const emblem = isSecret ? null : faceEmblem(set, value);
+    const emblem = isSecret ? null : faceEmblem(set, value, type);
     const paths = emblem ? emblemPaths(emblem.art) : null;
     if (paths && paths.length) {
         paintEmblem(ctx, ts, emblem, paths, set, mode, place, maxRelief, intensity);
@@ -616,30 +629,33 @@ export function paintFace({ set, type, face, isSecret = false, decals = null, de
 }
 
 /**
- * The relief map shared by every face of a (set, type): decoration layers raised by their
- * `relief`, body texture raised by `body.normalStrength`. Null when neither applies. Emblems
- * are per face and never enter this shared map.
+ * The relief map of a (set, type): decoration layers raised by their `relief` (image layers
+ * by their alpha, so the registry that holds them is needed), body texture raised by
+ * `body.normalStrength`. With a `face` that carries an emblem the emblem's relief joins in
+ * and the map belongs to that face alone; without one the map is shared by every face of
+ * the type. Null when nothing applies. `canvas` repaints an existing map in place.
  */
-export function paintNormalMap({ set, type }) {
+export function paintNormalMap({ set, type, face = null, isSecret = false, decals = null, decalRegistry = null, textOffsetY = 0, canvas = null }) {
     const ts = TEXTURE_SIZE;
     const decorRelief = decorLayers(set).reduce((max, layer) => Math.max(max, layerRelief(layer)), 0);
+    const faceRelief = isSecret ? 0 : faceEmblemRelief(set, type, face);
     const textureStrength = set.body.texture ? set.body.normalStrength : 0;
-    if (decorRelief <= 0 && textureStrength <= 0) return null;
+    if (decorRelief <= 0 && faceRelief <= 0 && textureStrength <= 0) return null;
 
     const height = new Uint8ClampedArray(ts * ts);
     if (textureStrength > 0) {
         const { values } = getPattern(set, type);
         for (let i = 0; i < ts * ts; i++) height[i] = values[i] * textureStrength * 160;
     }
-    if (decorRelief > 0) {
+    if (decorRelief > 0 || faceRelief > 0) {
         // Height canvases are white at the strongest relief; scale back to absolute relief.
         const relief = reliefScale(set);
-        const { canvas } = paintFace({ set, type, face: null, mode: 'height' });
-        const ctx = canvas.getContext('2d');
+        const { canvas: painted } = paintFace({ set, type, face, isSecret, decals, decalRegistry, textOffsetY, mode: 'height' });
+        const ctx = painted.getContext('2d');
         if ('filter' in ctx) {
             // Soften the band edges so the relief reads as a rounded bevel, not a cliff.
             ctx.filter = 'blur(1.5px)';
-            ctx.drawImage(canvas, 0, 0);
+            ctx.drawImage(painted, 0, 0);
             ctx.filter = 'none';
         }
         const data = ctx.getImageData(0, 0, ts, ts).data;
@@ -647,7 +663,7 @@ export function paintNormalMap({ set, type }) {
     }
 
     const pixels = heightToNormal(height, ts, ts, 2.5);
-    const out = createCanvas(ts);
+    const out = canvas || createCanvas(ts);
     const octx = out.getContext('2d');
     const img = octx.createImageData(ts, ts);
     img.data.set(pixels);

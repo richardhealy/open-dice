@@ -423,6 +423,67 @@ describe('face painter: layers, emblems, images', () => {
         expect(callsNamed(canvas, 'fill')).toHaveLength(6 + getEmblem('sunburst').length);
     });
 
+    it('the d100 pair never carries an emblem: a percentile roll is read from two faces (final review)', () => {
+        expect(faceEmblem(EMBLEM, '20', 'd20')).toEqual(EMBLEM.emblems['20']);
+        expect(faceEmblem(EMBLEM, '20', 'd100')).toBeNull();
+        expect(faceEmblem(EMBLEM, '1', 'd100')).toBeNull();
+        // The tens die's "20" and the units die's "1" keep their numerals in every map.
+        const tens = paint({ set: EMBLEM, type: 'd100', face: { text: '20' } }).canvas;
+        expect(fillTexts(tens)).toEqual(['20', '20', '20']);
+        expect(callsNamed(tens, 'fill')).toHaveLength(0);                                // kites carry no decor, and no sunburst
+        expect(fillTexts(paint({ set: EMBLEM, type: 'd100', face: { text: '1' } }).canvas)).toEqual(['1', '1', '1']);
+        for (const mode of ['mr', 'emissive', 'height']) {
+            expect(callsNamed(paint({ set: EMBLEM, type: 'd100', face: { text: '20' }, mode }).canvas, 'fill'), mode).toHaveLength(0);
+        }
+        // A d10 is read on its own and keeps its emblems.
+        expect(fillTexts(paint({ set: EMBLEM, type: 'd10', face: { text: '1' } }).canvas)).toEqual([]);
+        // The shipped Rosewood Knotwork: "20" on the tens die reads as 20; the sunburst stays on the d20.
+        const rosewood = getDiceSet('rosewood-knotwork');
+        expect(fillTexts(paint({ set: rosewood, type: 'd100', face: { text: '20' } }).canvas)).toEqual(['20', '20', '20']);
+        expect(fillTexts(paint({ set: rosewood, type: 'd20', face: { text: '20' } }).canvas)).toEqual([]);
+    });
+
+    it('paintNormalMap takes a loaded image layer\'s alpha as relief when given the registry (final review)', () => {
+        const img = { width: 256, height: 256 };
+        const registry = { get: (src) => (src === DECOR_IMAGE_SRC ? img : undefined), load: () => Promise.resolve(img) };
+        const set = { ...IMAGE, body: { ...IMAGE.body, image: null } };
+        const whiteFill = () => canvases.find((c) => stylesSet(c)[0] === '#ffffff' && callsNamed(c, 'drawImage').some((d) => d.args[0] === img));
+        expect(paintNormalMap({ set, type: 'd6' })).not.toBeNull();
+        expect(whiteFill()).toBeUndefined();                                              // no registry: the fallback, nothing from the image
+        canvases = [];
+        expect(paintNormalMap({ set, type: 'd6', decalRegistry: registry })).not.toBeNull();
+        const scratch = whiteFill();
+        expect(scratch).toBeDefined();                                                    // the alpha filled white: 0.6 is the strongest relief
+        const height = canvases.find((c) => callsNamed(c, 'drawImage').some((d) => d.args[0] === scratch));
+        expect(height).toBeDefined();
+        expect(callsNamed(height, 'getImageData')).toHaveLength(1);                      // and read back into the height field
+    });
+
+    it('a face that carries an emblem puts its relief into the normal map; other faces, secret faces and the d100 pair do not (final review)', () => {
+        const set = { ...INLAY, id: 'inlay-emblem', emblems: EMBLEM.emblems };           // no decor, no pattern relief: only an emblem raises anything
+        expect(paintNormalMap({ set, type: 'd20' })).toBeNull();
+        expect(paintNormalMap({ set, type: 'd20', face: { text: '7' } })).toBeNull();
+        expect(paintNormalMap({ set, type: 'd20', face: { text: '20' }, isSecret: true })).toBeNull();
+        expect(paintNormalMap({ set, type: 'd100', face: { text: '20' } })).toBeNull();
+        canvases = [];
+        expect(paintNormalMap({ set, type: 'd20', face: { text: '20' } })).not.toBeNull();
+        const heightOf = () => canvases.find((c) => callsNamed(c, 'getImageData').length === 1);
+        expect(callsNamed(heightOf(), 'fill')).toHaveLength(getEmblem('sunburst').length);
+        expect(stylesSet(heightOf()).at(-1)).toBe('#ffffff');                             // 0.5 is the strongest relief in this set
+        expect(fillTexts(heightOf())).toEqual([]);
+        // The d4: a corner value with an emblem raises it; a face without one has no map.
+        expect(paintNormalMap({ set, type: 'd4', face: { values: [2, 3, 4] } })).toBeNull();
+        canvases = [];
+        expect(paintNormalMap({ set, type: 'd4', face: { values: [1, 2, 3] } })).not.toBeNull();
+        expect(callsNamed(heightOf(), 'fill').filter((c) => c.args[1] === 'evenodd')).toHaveLength(2);   // the skull
+        // A loaded decal on the value wins here too: nothing is raised.
+        const img = { width: 64, height: 64 };
+        const registry = { get: () => img, load: () => Promise.resolve(img) };
+        canvases = [];
+        paintNormalMap({ set, type: 'd20', face: { text: '20' }, decals: { '20': { src: '/crit.svg' } }, decalRegistry: registry });
+        expect(callsNamed(heightOf(), 'fill')).toHaveLength(0);
+    });
+
     it('a cover body image is cropped to the canvas aspect and drawn at the canvas size instead of the pattern', () => {
         const img = { width: 128, height: 64 };
         const registry = { get: (src) => (src === BODY_IMAGE_SRC ? img : undefined), load: () => Promise.resolve(img) };

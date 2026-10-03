@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createFaceTexture, createD4FaceTexture } from '../face-texture.js';
 import { CLASSIC, resolveSet } from './index.js';
 import { createEdgeMaterial, createFaceMaterial } from './materials.js';
-import { paintFace, paintNormalMap, TEXTURE_SIZE } from './face-painter.js';
+import { paintFace, paintNormalMap, faceEmblemRelief, TEXTURE_SIZE } from './face-painter.js';
 import { cacheKey, getOrCreateTexture, getTextureAnisotropy } from './texture-cache.js';
 import { isNumeralFontReady, ensureNumeralFont } from './fonts/numerals.js';
 import { createCanvas } from './canvas-factory.js';
@@ -139,14 +139,34 @@ function drawCover(ctx, img, ts) {
     ctx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, ts, ts);
 }
 
+/** The set's normal image when the registry holds it, else null. */
+function normalImageOf(set, decalRegistry) {
+    const spec = set.body.normalImage;
+    return spec && decalRegistry ? decalRegistry.get(spec.src) || null : null;
+}
+
 /**
- * The normal map for a (set, type): the generated relief (decoration and body texture) as
- * today, or, when the set has a loaded normal image, that image as the base with the
+ * Image sources a normal map still waits for: the normal image (its base) and every
+ * decoration image (its alpha is relief). Nothing without a registry to load them into.
+ */
+function pendingNormalImages(set, decalRegistry) {
+    if (!decalRegistry) return [];
+    const out = [];
+    const add = (spec) => { if (spec && spec.src && !decalRegistry.get(spec.src) && !out.includes(spec.src)) out.push(spec.src); };
+    add(set.body.normalImage);
+    for (const layer of decorLayers(set)) add(layer.image);
+    return out;
+}
+
+/**
+ * The normal map for a (set, type), or with `faceOpts` ({ face, isSecret, decals, textOffsetY })
+ * for one face that carries an emblem: the generated relief (decoration, emblem, body
+ * texture), or, when the set has a loaded normal image, that image as the base with the
  * generated relief blended over it. `target` repaints an existing canvas (image arrival).
  * Null when nothing applies.
  */
-function paintNormalCanvas(set, type, img, target = null) {
-    const generated = paintNormalMap({ set, type });
+function paintNormalCanvas(set, type, img, decalRegistry, faceOpts = null, target = null) {
+    const generated = paintNormalMap({ set, type, ...faceOpts, decalRegistry, canvas: img ? null : target });
     if (!img) return generated;
     const ts = TEXTURE_SIZE;
     const out = target || createCanvas(ts);
@@ -165,24 +185,24 @@ function paintNormalCanvas(set, type, img, target = null) {
 }
 
 /**
- * The shared normal texture of a (set, type), cached per images loaded. A normal image still
- * loading is fetched whether or not anything painted a map before it arrived: with a canvas
- * (generated relief) that canvas is repainted when the image lands; without one (no decor
- * relief, no pattern strength) there is nothing to repaint and the next build, keyed by one
- * more loaded image, paints the image as the base. Without a registry the fallback stands.
+ * The shared normal texture of a (set, type), cached per images loaded. Its images still
+ * loading (the normal image, decoration images) are fetched whether or not anything painted
+ * a map before they arrived: with a canvas (generated relief) that canvas is repainted when
+ * they land; without one (no decor relief, no pattern strength) there is nothing to repaint
+ * and the next build, keyed by one more loaded image, paints them. The registry hands
+ * repeated requests for one source the same in-flight promise, so asking again from every
+ * build before it arrives (a null is never cached) is free. Without a registry the fallback
+ * stands.
  */
 function normalTexture(set, type, decalRegistry) {
-    const spec = set.body.normalImage;
-    const img = spec && decalRegistry ? decalRegistry.get(spec.src) || null : null;
     return getOrCreateTexture(cacheKey([set.id, type, 'normal', `img:${loadedImageCount(set, decalRegistry)}`]), () => {
-        const canvas = paintNormalCanvas(set, type, img);
+        const canvas = paintNormalCanvas(set, type, normalImageOf(set, decalRegistry), decalRegistry);
         const texture = canvas ? canvasTexture(canvas) : null;
-        if (spec && !img && decalRegistry) {
-            // The registry hands repeated requests for one source the same in-flight promise,
-            // so asking again from every build before it arrives (a null is never cached) is free.
-            loadImage(decalRegistry, spec.src).then((loaded) => {
-                if (!loaded || !canvas) return;
-                paintNormalCanvas(set, type, loaded, canvas);
+        const waiting = pendingNormalImages(set, decalRegistry);
+        if (waiting.length) {
+            Promise.all(waiting.map((src) => loadImage(decalRegistry, src))).then((loaded) => {
+                if (!canvas || !loaded.some(Boolean)) return;
+                paintNormalCanvas(set, type, normalImageOf(set, decalRegistry), decalRegistry, null, canvas);
                 texture.needsUpdate = true;
             });
         }
@@ -223,7 +243,10 @@ function buildClassicMaterials({ type, count, faces, colors, isSecret = false, d
     return materials;
 }
 
-/** Albedo (+ MR, + emissive when the set needs them) for one face, cached, decal- and image-aware. */
+/**
+ * Albedo (+ MR, + emissive when the set needs them, + a normal map of its own when the face
+ * carries an emblem) for one face, cached, decal- and image-aware.
+ */
 function faceTextures(set, type, face, isSecret, decals, decalRegistry, textOffsetY) {
     // Faces painted before the embedded font is usable fall back to a system serif; they are
     // keyed apart so the cache never serves them once the font has loaded (review I2), and
@@ -231,7 +254,9 @@ function faceTextures(set, type, face, isSecret, decals, decalRegistry, textOffs
     // still loading are keyed apart the same way (img:<n>).
     const fontReady = isNumeralFontReady();
     if (!fontReady) ensureNumeralFont();
-    const fk = cacheKey([faceKey(face, isSecret, decals, textOffsetY), fontReady ? 'f1' : 'f0', `img:${loadedImageCount(set, decalRegistry)}`]);
+    const faceOpts = { face, isSecret, decals, textOffsetY };
+    const images = `img:${loadedImageCount(set, decalRegistry)}`;
+    const fk = cacheKey([faceKey(face, isSecret, decals, textOffsetY), fontReady ? 'f1' : 'f0', images]);
     const modes = ['albedo'];
     if (needsMrMap(set)) modes.push('mr');
     if (needsEmissiveMap(set)) modes.push('emissive');
@@ -247,19 +272,30 @@ function faceTextures(set, type, face, isSecret, decals, decalRegistry, textOffs
             return canvasTexture(result.canvas);
         });
     }
-    // Body, decoration and decal images still loading: fetch them and repaint every map of
-    // this face when they arrive. Without a registry there is nothing to load into, so the
-    // fallback stands and nothing is scheduled.
+    // An emblem's relief is per face, so a face that carries one gets its own normal map in
+    // place of the shared one. Height maps carry no glyphs, so the font is not in its key.
+    if (!isSecret && faceEmblemRelief(set, type, face) > 0) {
+        textures.normal = getOrCreateTexture(cacheKey([set.id, type, 'normal', faceKey(face, isSecret, decals, textOffsetY), images]), () => {
+            const canvas = paintNormalCanvas(set, type, normalImageOf(set, decalRegistry), decalRegistry, faceOpts);
+            if (canvas) canvases.normal = canvas;
+            pendingNormalImages(set, decalRegistry).forEach((src) => pending.add(src));
+            return canvas ? canvasTexture(canvas) : null;
+        });
+    }
+    // Body, decoration, normal and decal images still loading: fetch them and repaint every
+    // map of this face when they arrive. Without a registry there is nothing to load into, so
+    // the fallback stands and nothing is scheduled.
     if (pending.size > 0 && decalRegistry) {
         Promise.all([...pending].map((src) => loadImage(decalRegistry, src))).then((loaded) => {
             if (!loaded.some(Boolean)) return;
             for (const mode of Object.keys(canvases)) {
-                paintFace({ set, type, face, isSecret, decals, decalRegistry, textOffsetY, mode, canvas: canvases[mode] });
+                if (mode === 'normal') paintNormalCanvas(set, type, normalImageOf(set, decalRegistry), decalRegistry, faceOpts, canvases.normal);
+                else paintFace({ set, type, face, isSecret, decals, decalRegistry, textOffsetY, mode, canvas: canvases[mode] });
                 textures[mode].needsUpdate = true;
             }
         });
     }
-    return { map: textures.albedo, mr: textures.mr || null, emissive: textures.emissive || null };
+    return { map: textures.albedo, mr: textures.mr || null, emissive: textures.emissive || null, normal: textures.normal || null };
 }
 
 function buildSetMaterials({ set, type, count, faces, isSecret = false, decals = null, decalRegistry = null, textOffsetY = 0 }) {
@@ -270,7 +306,7 @@ function buildSetMaterials({ set, type, count, faces, isSecret = false, decals =
     const materials = [createEdgeMaterial(set, blank)];
     for (let i = 1; i < count; i++) {
         const maps = faceTextures(set, type, faces[i] || null, isSecret, decals, decalRegistry, textOffsetY);
-        materials.push(createFaceMaterial(set, { ...maps, normal }));
+        materials.push(createFaceMaterial(set, { ...maps, normal: maps.normal || normal }));
     }
     return materials;
 }

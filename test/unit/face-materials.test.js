@@ -9,6 +9,7 @@ import { _clearPatternCacheForTests } from '../../src/sets/face-painter.js';
 import { makeRecordingCanvas, callsNamed } from './helpers/canvas-stub.js';
 import { GEM, INLAY, GLOW, NO_EDGE, CIRCUIT, VINES, EMBLEM, IMAGE, GLOW_ALL, BODY_IMAGE_SRC, DECOR_IMAGE_SRC, NORMAL_IMAGE_SRC } from './helpers/sets.js';
 import { hexToRgb, scaleColor } from '../../src/sets/color.js';
+import { getEmblem } from '../../src/sets/decor/emblems.js';
 
 function geometryWithGroups(count) {
     const g = new THREE.BufferGeometry();
@@ -394,6 +395,58 @@ describe('buildFaceMaterials: map modes, images and shared emissive intensity', 
         expect(callsNamed(second[1].normalMap.image, 'getImageData')).toHaveLength(0);                   // nothing generated to blend over it
         expect(drawn(second[1].map.image)).toContain(body);
         expect(build(set, 'd6', [null, { text: '6' }], registry)[1].normalMap).toBe(second[1].normalMap);
+    });
+
+    it('the normal map takes a loaded decoration image\'s alpha as relief, and a late one repaints it on arrival (final review)', async () => {
+        const img = { width: 256, height: 256 };
+        const set = { ...IMAGE, id: 'image-relief', body: { ...IMAGE.body, image: null } };
+        const whiteFills = () => canvases.filter((c) => callsNamed(c, 'set:fillStyle')[0]?.args[0] === '#ffffff' && drawn(c).includes(img));
+        const ready = { get: (src) => (src === DECOR_IMAGE_SRC ? img : undefined), load: () => Promise.resolve(img) };
+        const mats = build(set, 'd6', [null, { text: '6' }], ready);
+        expect(mats[1].normalMap).toBeInstanceOf(THREE.Texture);
+        expect(whiteFills()).toHaveLength(1);                                                             // the alpha, white: 0.6 is the strongest relief
+        const height = canvases.find((c) => drawn(c).includes(whiteFills()[0]));
+        expect(callsNamed(height, 'getImageData')).toHaveLength(1);
+        // Late: the first map has no relief from the image; when it lands the shared canvas is repainted in place.
+        clearDiceSetCaches();
+        _clearPatternCacheForTests();
+        canvases = [];
+        const late = lateRegistry({ [DECOR_IMAGE_SRC]: img });
+        const early = build(set, 'd6', [null, { text: '6' }], late);
+        const normal = early[1].normalMap;
+        expect(normal.version).toBe(1);
+        expect(whiteFills()).toHaveLength(0);
+        await flush();
+        expect(whiteFills()).toHaveLength(1);
+        expect(normal.version).toBe(2);
+        expect(callsNamed(normal.image, 'putImageData')).toHaveLength(2);                                // painted twice, into the same canvas
+        expect(build(set, 'd6', [null, { text: '6' }], late)[1].normalMap).not.toBe(normal);             // img:1 keys a fresh texture
+    });
+
+    it('a face that carries an emblem gets its own normal map with the emblem\'s relief; the other faces share the set\'s (final review)', () => {
+        const faces = [null, { text: '20' }, { text: '7' }, { text: '1' }];
+        const [, twenty, seven, one] = build(EMBLEM, 'd20', faces);
+        for (const m of [twenty, seven, one]) expect(m.normalMap).toBeInstanceOf(THREE.Texture);
+        expect(twenty.normalMap).not.toBe(seven.normalMap);
+        expect(one.normalMap).not.toBe(seven.normalMap);
+        expect(twenty.normalMap).not.toBe(one.normalMap);
+        // The height maps behind them: the shared one holds the filigree alone (6 fills); the 1 adds the
+        // skull (2); the 20 adds the sunburst, white at 0.5 against the decor's 0.6.
+        const sun = getEmblem('sunburst').length;
+        const heights = canvases.filter((c) => callsNamed(c, 'getImageData').length === 1);
+        expect(heights.map((c) => callsNamed(c, 'fill').length).sort((a, b) => a - b)).toEqual([6, 8, 6 + sun]);
+        const raised = heights.find((c) => callsNamed(c, 'fill').length === 6 + sun);
+        expect(callsNamed(raised, 'set:fillStyle').at(-1).args[0]).toBe(scaleColor('#ffffff', 0.5 / 0.6));
+        // Cached per face; a secret face and the d100 pair use the shared map; a d4 face is keyed by its corners.
+        const again = build(EMBLEM, 'd20', faces);
+        expect(again[1].normalMap).toBe(twenty.normalMap);
+        expect(again[2].normalMap).toBe(seven.normalMap);
+        const secret = buildFaceMaterials({ type: 'd20', geometry: geometryWithGroups(2), faces: [null, { text: '20' }], set: EMBLEM, isSecret: true });
+        expect(secret[1].normalMap).toBe(seven.normalMap);
+        const tens = build(EMBLEM, 'd100', [null, { text: '20' }, { text: '90' }]);
+        expect(tens[1].normalMap).toBe(tens[2].normalMap);
+        const d4 = build(EMBLEM, 'd4', [null, { values: [1, 2, 3] }, { values: [2, 3, 4] }]);
+        expect(d4[1].normalMap).not.toBe(d4[2].normalMap);
     });
 
     it('a failed image warns once per source and leaves the fallback', async () => {
