@@ -4,6 +4,7 @@ import { hasDecor } from './decor/index.js';
 import { hasEmblem } from './decor/emblems.js';
 import { PATTERN_KINDS } from './noise.js';
 import { shade } from './color.js';
+import { modelsSpec } from '../models/spec.js';
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -259,6 +260,7 @@ export function validateSet(def) {
     const swatch = def.swatch.map((c, i) => hex(`swatch[${i}]`, c, true));
 
     const decals = decalsSpec(def.decals);
+    const models = modelsSpec(def.models);
 
-    return deepFreeze({ id: def.id, name: def.name.trim(), family: def.family, body, edge, numeral, decor, emblems, decals, swatch });
+    return deepFreeze({ id: def.id, name: def.name.trim(), family: def.family, body, edge, numeral, decor, emblems, decals, models, swatch });
 }

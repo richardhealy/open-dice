@@ -237,3 +237,39 @@ window.__decalOutside = async (src, scale) => {
 window.__designDecals = () => lib.listDiceSets().map((s) => lib.getDiceSet(s.id))
     .filter((set) => set.decals && set.decals.d20 && set.decals.d20['20'])
     .map((set) => ({ id: set.id, src: set.decals.d20['20'].src, scale: set.decals.d20['20'].scale }));
+
+// Model dice end to end, with the library's own die shapes through a stub loader (no files):
+// analyse, register, roll without a target (the shape decides), replay with targets, glow.
+window.__modelCheck = async () => {
+    const shapes = {
+        'shape:flask-d4': () => lib.dieShape('d4', { stopper: { radius: 0.1, height: 0.18 } }),
+        'shape:d6': () => lib.dieShape('d6'),
+    };
+    lib.setModelLoader(async (src) => shapes[src]());
+    const flask = await lib.analyzeModelDie(shapes['shape:flask-d4'](), { type: 'd4', throws: 120, seed: 2 });
+    const cube = await lib.analyzeModelDie(shapes['shape:d6'](), { type: 'd6', throws: 120, seed: 2 });
+    if (!flask.ok || !cube.ok) return { ok: false, reason: flask.reason || cube.reason };
+    registerDiceSet({
+        id: 'fixture-model', name: 'Fixture Model', family: 'glass',
+        body: { color: '#8A1020' }, numeral: { color: '#FFFFFF' }, swatch: ['#8A1020'],
+        models: { d4: { src: 'shape:flask-d4', ...flask.model }, d6: { src: 'shape:d6', ...cube.model } },
+    }, { replace: true });
+    const config = [{ dice: 'd4', set: 'fixture-model' }, { dice: 'd6', set: 'fixture-model' }];
+    await roller.reset();
+    await roller.roll(config);
+    const free = roller.getCurrentResults().results.map((r) => ({ value: r.value, visible: r.visible }));
+    const models = roller.dice.map((d) => !!d.model);
+    const labels = roller.dice.map((d) => d.mesh.children.filter((c) => c.userData.label && c.geometry.getAttribute('position').count > 0).length);
+
+    const die = roller.dice[1];
+    const materials = lib.dieMaterials(die).filter((m) => m.emissive);
+    const before = materials.map((m) => m.emissive.getHex());
+    roller.glow(die, { color: 0xff0000, duration: 120 });
+    await new Promise((r) => setTimeout(r, 600));
+    const glowRestored = materials.every((m, i) => m.emissive.getHex() === before[i]);
+
+    await roller.reset();
+    await roller.roll(config.map((c, i) => ({ ...c, rolled: [3, 5][i] })));
+    const replay = roller.getCurrentResults().results.map((r) => ({ value: r.value, visible: r.visible }));
+    return { ok: true, free, replay, models, labels, glowRestored, flask: flask.report.distribution, cube: cube.report.distribution };
+};

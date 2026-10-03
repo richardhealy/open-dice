@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { easeOutCubic } from './base.js';
+import { dieMaterials } from '../die-materials.js';
 
 /**
  * One frame of the glow: the material's own emissive (its base colour times its base
@@ -33,8 +34,7 @@ export function glow(options = {}) {
         scope: 'die',
         create(ctx) {
             const { die } = ctx;
-            const materials = (Array.isArray(die.mesh.material) ? die.mesh.material : [die.mesh.material])
-                .filter((m) => m.emissive);
+            const materials = dieMaterials(die).filter((m) => m.emissive);
             const originalEmissive = materials.map((m) => m.emissive.getHex());
             const originalIntensity = materials.map((m) => m.emissiveIntensity ?? 1);
             const baseEmissive = materials.map((m, i) => m.emissive.clone().multiplyScalar(originalIntensity[i]));

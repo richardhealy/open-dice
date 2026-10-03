@@ -176,6 +176,16 @@ try {
         console.log(`${dok ? 'PASS' : 'FAIL'} d20 decal fit (${label}): ${decals.length} decals, ${badDecals.length} reaching into the edge band`);
         for (const d of badDecals) console.log(`  ${d.id}: ${d.outside} px`);
         if (!dok) failures++;
+
+        // Model dice: the shape decides a free roll, a replay shows its targets, labels draw, glow restores.
+        const m = await pg.evaluate(() => window.__modelCheck());
+        const freeOk = m.ok && m.free.every((r) => r.value === r.visible) && m.free[0].value >= 1 && m.free[0].value <= 4 && m.free[1].value >= 1 && m.free[1].value <= 6;
+        const replayOk = m.ok && m.replay[0].visible === 3 && m.replay[1].visible === 5;
+        const drawn = m.ok && m.models.every(Boolean) && m.labels[0] === 12 && m.labels[1] === 6;
+        const mok = freeOk && replayOk && drawn && m.glowRestored;
+        console.log(`${mok ? 'PASS' : 'FAIL'} model dice (${label}): free roll ${JSON.stringify(m.free)}, replay ${JSON.stringify(m.replay)}, labels ${JSON.stringify(m.labels)}, glow restored ${m.glowRestored}`);
+        if (!m.ok) console.log(`  ${m.reason}`);
+        if (!mok) failures++;
     };
     await probeIn('chromium', page);
     {
