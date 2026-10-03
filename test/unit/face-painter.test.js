@@ -121,6 +121,21 @@ describe('face painter', () => {
         expect(fontsSet(canvas).at(-1)).toBe('700 68px OpenDiceNumerals, Georgia, "Times New Roman", serif');
     });
 
+    it('a numeral outline is stroked under the glyph in albedo mode only, scaled to the glyph size', () => {
+        const outlined = { ...GEM, numeral: { ...GEM.numeral, style: 'flat', outline: { color: '#1B2B4A', width: 0.1 } } };
+        const { canvas } = paintFace({ set: outlined, type: 'd6', face: { text: '4' }, mode: 'albedo' });
+        const strokes = callsNamed(canvas, 'strokeText');
+        expect(strokes).toHaveLength(1);
+        expect(strokes[0].args[0]).toBe('4');
+        const widths = callsNamed(canvas, 'set:lineWidth').map((c) => c.args[0]);
+        expect(widths).toContain(Math.round(256 * 0.445 * 0.1 * 100) / 100);        // sizePx x width
+        const order = canvas.calls.map((c) => c.name).filter((n) => n === 'strokeText' || n === 'fillText');
+        expect(order[0]).toBe('strokeText');                                            // outline first, glyph on top
+        expect(callsNamed(canvas, 'set:strokeStyle').map((c) => c.args[0])).toContain('#1B2B4A');
+        const mr = paintFace({ set: { ...INLAY, numeral: { ...INLAY.numeral, outline: { color: '#000000', width: 0.1 } } }, type: 'd6', face: { text: '4' }, mode: 'mr' });
+        expect(callsNamed(mr.canvas, 'strokeText')).toHaveLength(0);
+    });
+
     it('d100 faces honour textOffsetY', () => {
         const { canvas } = paintFace({ set: INLAY, type: 'd100', face: { text: '90' }, textOffsetY: 16, mode: 'albedo' });
         expect(callsNamed(canvas, 'fillText').at(-1).args).toEqual(['90', 128, 144]);

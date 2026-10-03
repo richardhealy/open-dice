@@ -17,6 +17,6 @@ export default {
     },
     edge: { metal: 'silver' },
     numeral: { color: '#CDEFEB', style: 'glow', glow: { color: '#CDEFEB', intensity: 1.6 } },
-    decor: { art: 'vines', color: '#9FDCD2', relief: 0.3, glow: 0.6 },
+    decor: { art: 'vines', color: '#8FD3C8', relief: 0.3, glow: 0.35 },
     swatch: ['#0F3B3A', '#CDEFEB'],
 };

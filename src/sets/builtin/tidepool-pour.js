@@ -25,7 +25,7 @@ export default {
         normalStrength: 0.3,
     },
     edge: { metal: 'gold' },
-    numeral: { color: '#D4AF37', style: 'engraved', scale: 1.1 },
+    numeral: { color: '#D4AF37', style: 'engraved', scale: 1.1, outline: { color: '#1B2B4A', width: 0.1 } },
     decor: { art: 'frame', metal: 'gold', relief: 0.5 },
     swatch: ['#2F5BA8', '#EEE4D2', '#D4AF37'],
 };

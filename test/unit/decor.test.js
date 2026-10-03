@@ -167,10 +167,24 @@ describe('vines generator', () => {
             expect(paths.length).toBeGreaterThanOrEqual(sides * 3);
             expectValidArt(paths);
             const strokes = paths.filter((p) => !p.fill), leaves = paths.filter((p) => p.fill);
-            expect([...new Set(strokes.map((p) => p.stroke))].sort()).toEqual([0.02, 0.03, 0.05]);
-            expect(strokes.filter((p) => p.stroke === 0.05)).toHaveLength(sides);   // one main vine per edge
+            expect([...new Set(strokes.map((p) => p.stroke))].sort()).toEqual([0.015, 0.022, 0.035]);
+            expect(strokes.filter((p) => p.stroke === 0.035)).toHaveLength(sides);   // one main vine per edge
             expect(leaves).toHaveLength(strokes.length);                             // a leaf at every tip
             expect(buildVines(sides, { corners })).toEqual(paths);
+        }
+    });
+
+    it('main vines are long tendrils: each spans at least 0.4 of the apothem from its edge midpoint', () => {
+        for (const sides of SIDES) for (const corners of [false, true]) {
+            const apothem = Math.cos(Math.PI / sides) * 0.94;
+            const mains = buildVines(sides, { corners }).filter((p) => !p.fill && p.stroke === 0.035);
+            for (const p of mains) {
+                const pts = pathPoints(p.d);
+                const start = pts[0], end = pts[pts.length - 1];
+                expect(Math.hypot(start[0], start[1])).toBeGreaterThan(apothem - 0.03);          // starts on the edge midpoint
+                // The d4's tendrils hook between three corner numerals and stay compact; centred faces get the long sweep.
+                expect(Math.hypot(end[0] - start[0], end[1] - start[1])).toBeGreaterThanOrEqual((corners ? 0.3 : 0.4) * apothem);
+            }
         }
     });
 

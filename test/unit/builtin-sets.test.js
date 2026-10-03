@@ -51,7 +51,7 @@ describe('built-in sets', () => {
 
         const witchlight = getDiceSet('witchlight-vines');
         expect(witchlight.decor).toHaveLength(1);
-        expect(witchlight.decor[0]).toMatchObject({ art: 'vines', metal: null, glow: 0.6 });
+        expect(witchlight.decor[0]).toMatchObject({ art: 'vines', metal: null, glow: 0.35 });
         expect(witchlight.decor[0].color).toMatch(/^#[0-9A-Fa-f]{6}$/);
         expect(witchlight.numeral.style).toBe('glow');
         expect(witchlight.edge.metal).toBe('silver');
@@ -61,7 +61,7 @@ describe('built-in sets', () => {
         expect(mainframe.numeral.font).toBe('OpenDiceMono');
         expect(mainframe.numeral.style).toBe('glow');
         expect(mainframe.body.texture.kind).toBe('circuit');
-        expect(mainframe.body.emissive).toEqual({ color: mainframe.body.texture.color2, intensity: 0.35 });
+        expect(mainframe.body.emissive).toEqual({ color: mainframe.body.texture.color2, intensity: 0.15 });   // traces glow softly; the digits lead
         expect(mainframe.edge.metal).toBe('iron');
         expect(mainframe.decor).toBeNull();
 

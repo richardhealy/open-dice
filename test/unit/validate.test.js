@@ -27,11 +27,20 @@ const withBody = (body) => ({ body: { color: '#B5173A', ...body } });
 const withTexture = (texture) => withBody({ texture });
 
 describe('validateSet', () => {
+    it('numeral.outline is optional; when given it needs a hex colour and a width 0.02..0.2 (default 0.08)', () => {
+        const base = { id: 'o', name: 'o', family: 'gem', body: { color: '#123456' }, edge: { metal: 'gold' }, swatch: ['#123456'] };
+        expect(validateSet({ ...base, numeral: { color: '#ffffff', style: 'flat' } }).numeral.outline).toBeNull();
+        expect(validateSet({ ...base, numeral: { color: '#ffffff', style: 'flat', outline: { color: '#000000' } } }).numeral.outline).toEqual({ color: '#000000', width: 0.08 });
+        expect(validateSet({ ...base, numeral: { color: '#ffffff', style: 'flat', outline: { color: '#000000', width: 0.12 } } }).numeral.outline).toEqual({ color: '#000000', width: 0.12 });
+        expect(() => validateSet({ ...base, numeral: { color: '#ffffff', style: 'flat', outline: { width: 0.1 } } })).toThrow(/numeral\.outline\.color/);
+        expect(() => validateSet({ ...base, numeral: { color: '#ffffff', style: 'flat', outline: { color: '#000000', width: 0.5 } } })).toThrow(/numeral\.outline\.width/);
+    });
+
     it('applies family defaults and freezes the result', () => {
         const set = validateSet(minimalGem());
         expect(Object.isFrozen(set)).toBe(true);
         expect(set.body).toMatchObject({ color: '#B5173A', depthColor: '#B5173A', roughness: 0.16, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.06, glow: null, texture: null, normalStrength: 0, envMapIntensity: 1 });
-        expect(set.numeral).toEqual({ font: 'OpenDiceNumerals', weight: 700, color: '#2A0912', style: 'engraved', metal: null, glow: null, scale: 1 });
+        expect(set.numeral).toEqual({ font: 'OpenDiceNumerals', weight: 700, color: '#2A0912', style: 'engraved', metal: null, glow: null, scale: 1, outline: null });
         expect(set.decor).toBeNull();
         expect(set.edge).toEqual({ metal: 'gold' });
     });

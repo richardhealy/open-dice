@@ -466,6 +466,13 @@ export function paintNumeral(ctx, text, { x, y, sizePx, set, mode, intensity }) 
         ctx.fillText(text, x + dx, y + dy);
         drawUnderline(ctx, text, x + dx, y + dy, sizePx, fill);
     };
+    if (mode === 'albedo' && set.numeral.outline) {
+        // Stroked first so the glyph sits on top of a contrasting rim (busy or light bodies).
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.round(sizePx * set.numeral.outline.width * 100) / 100;
+        ctx.strokeStyle = set.numeral.outline.color;
+        ctx.strokeText(text, x, y);
+    }
     if (mode === 'mr') {
         glyph(mrColor(INLAY_ROUGHNESS, INLAY_METALNESS));
     } else if (mode === 'emissive') {

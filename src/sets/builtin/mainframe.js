@@ -9,8 +9,8 @@ export default {
     body: {
         color: '#06100A',
         roughness: 0.5,
-        texture: { kind: 'circuit', color2: '#3CFF78', density: 10, grid: 12, contrast: 0.4 },
-        emissive: { color: '#3CFF78', intensity: 0.35 },
+        texture: { kind: 'circuit', color2: '#3CFF78', density: 5, grid: 12, contrast: 0.18 },
+        emissive: { color: '#3CFF78', intensity: 0.15 },
         normalStrength: 0.4,
     },
     edge: { metal: 'iron' },

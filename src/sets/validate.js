@@ -184,6 +184,11 @@ export function validateSet(def) {
         metal: null,
         glow: null,
         scale: range('numeral.scale', n.scale, 0.5, 2, 1),
+        // A stroke around the glyph, for numerals that must read on a busy or light body (pour).
+        outline: n.outline == null ? null : {
+            color: hex('numeral.outline.color', n.outline.color, true),
+            width: range('numeral.outline.width', n.outline.width, 0.02, 0.2, 0.08),
+        },
     };
     if (style === 'inlay') {
         if (!METAL_NAMES.includes(n.metal)) fail('numeral.metal', `required for the inlay style; one of ${METAL_NAMES.join(', ')}`);

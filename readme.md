@@ -166,7 +166,7 @@ A dice set is a named look: body finish, edge metal, numeral style and optional 
 | `sapphire-jewel` | Sapphire variant of Ruby Jewel. |
 | `obsidian-gold` | Black glass, gold inlaid numerals, gold edges. |
 | `ember-dragonhide` | Dark scaled hide, iron edges, glowing ember numerals. |
-| `tidepool-pour` | Poured marble in navy, cream, gold and rust with cream lacing, every face different; gold inlay numerals, gold frame and edges. |
+| `tidepool-pour` | Poured marble in navy, cream, gold and rust with cream lacing, every face different; engraved gold numerals, gold frame and edges. |
 | `witchlight-vines` | Deep teal body wreathed in glowing pale-mint vines, mint glow numerals, silver edges. |
 | `mainframe` | Near-black green body with glowing circuit traces, green monospace glow numerals, iron edges. |
 | `rosewood-knotwork` | Rosewood pour with a gold knotwork border, engraved cream numerals, a gold sunburst emblem on the 20, gold edges. |
@@ -214,7 +214,7 @@ registerDiceSet({
 });
 ```
 
-Every field a built-in set uses is available; see `src/sets/builtin/` for the five shipped definitions and `src/sets/validate.js` for the accepted ranges. Textures are 256 px canvases painted once per set, die type and face value, then cached; `clearDiceSetCaches()` frees them.
+Every field a built-in set uses is available; see `src/sets/builtin/` for the ten shipped definitions and `src/sets/validate.js` for the accepted ranges. Textures are 256 px canvases painted once per set, die type and face value, then cached; `clearDiceSetCaches()` frees them.
 
 ### Patterns
 
