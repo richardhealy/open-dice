@@ -15,7 +15,7 @@ A 3D physics-based dice rolling engine built with Three.js and Cannon-es. Design
 - 🧠 Declarative rule-based effect composition (match by type/value, play combos)
 - 🔒 Secret roll mode
 - 🌈 Per-die colors (body, text, background)
-- 💎 Dice sets — five premium looks (gem, glass, textured) plus the classic default; register your own as data
+- 💎 Dice sets — ten built-in looks (gem, glass, hide, marble pour, circuit, knotwork, felt) plus the classic default; register your own as data with procedural patterns, decoration layers, face emblems and image textures
 - 📦 Lightweight, modular, no UI framework lock-in
 
 ---
@@ -156,7 +156,7 @@ Keys are face *values* (as strings), not face indices. Decals follow the target-
 
 ## 💎 Dice sets
 
-A dice set is a named look: body finish, edge metal, numeral style and optional face decoration, rendered with physically based materials and reflections. Five sets ship with the library; `classic` is the original look and stays the default.
+A dice set is a named look: body finish, edge metal, numeral style and optional face decoration, rendered with physically based materials and reflections. Ten sets ship with the library; `classic` is the original look and stays the default.
 
 | id | look |
 |---|---|
@@ -166,8 +166,15 @@ A dice set is a named look: body finish, edge metal, numeral style and optional 
 | `sapphire-jewel` | Sapphire variant of Ruby Jewel. |
 | `obsidian-gold` | Black glass, gold inlaid numerals, gold edges. |
 | `ember-dragonhide` | Dark scaled hide, iron edges, glowing ember numerals. |
+| `tidepool-pour` | Poured marble in navy, cream, gold and rust with cream lacing, every face different; gold inlay numerals, gold frame and edges. |
+| `witchlight-vines` | Deep teal body wreathed in glowing pale-mint vines, mint glow numerals, silver edges. |
+| `mainframe` | Near-black green body with glowing circuit traces, green monospace glow numerals, iron edges. |
+| `rosewood-knotwork` | Rosewood pour with a gold knotwork border, engraved cream numerals, a gold sunburst emblem on the 20, gold edges. |
+| `rose-felt` | Dusty pink felt, matte with no edge metal, darker rose corner ornaments, engraved plum numerals. |
 
 ![Ruby Jewel d20](docs/sets/ruby-jewel-d20.png) ![Obsidian & Gold d20](docs/sets/obsidian-gold-d20.png) ![Ember Dragonhide d20](docs/sets/ember-dragonhide-d20.png)
+
+![Tidepool Pour d20](docs/sets/tidepool-pour-d20.png) ![Witchlight Vines d20](docs/sets/witchlight-vines-d20.png) ![Mainframe d20](docs/sets/mainframe-d20.png) ![Rosewood Knotwork d20](docs/sets/rosewood-knotwork-d20.png) ![Rose Felt d20](docs/sets/rose-felt-d20.png)
 
 ```js
 import { DiceRoller, listDiceSets, registerDiceSet } from 'open-dice-dnd';
@@ -582,6 +589,18 @@ npm run build
 ---
 
 ## 📝 Changelog
+
+### [1.5.0] - 2026-10-03
+
+- Three new procedural patterns: `pour` (marbled pour with optional lacing), `circuit` (seeded traces and pads, also the emissive mask) and `felt`; every pattern accepts `perFace` for a different seed on each face
+- Glowing bodies: `body.emissive` lights the pattern itself; `body.vignette` is now a tunable field
+- Decoration becomes a list of up to six layers: metal arts, flat-colour arts with optional glow, and image layers; new built-in arts `frame`, `corners`, `knotwork` and `vines`
+- `emblems` replace the numeral on chosen face values with path art (built-in `sunburst`, `skull`, `star`, `crown`), painted with metal or colour and relief
+- Image textures: `body.image` and `body.normalImage` paint a set from PNGs, preloaded with `preloadSets()` and repainted when they arrive; a set without a roller paints its fallback and never throws
+- Second embedded numeral font `OpenDiceMono`; `numeral.font` takes either embedded family or any name for the browser to resolve
+- `registerDecorArt()` and `registerEmblemArt()` accept SVG path data for your own borders and emblems
+- Five new built-in sets: Tidepool Pour, Witchlight Vines, Mainframe, Rosewood Knotwork, Rose Felt
+- 1.4.0 set definitions validate and paint unchanged; Classic stays pixel-identical and the five 1.4.0 sets keep their look
 
 ### [1.4.0] - 2026-10-03
 
