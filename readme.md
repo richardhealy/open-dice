@@ -15,7 +15,7 @@ A 3D physics-based dice rolling engine built with Three.js and Cannon-es. Design
 - 🧠 Declarative rule-based effect composition (match by type/value, play combos)
 - 🔒 Secret roll mode
 - 🌈 Per-die colors (body, text, background)
-- 💎 Dice sets — five premium looks (gem, glass, textured) plus the classic default; register your own as data
+- 💎 Dice sets — ten built-in looks (gem, glass, hide, marble pour, circuit, knotwork, felt) plus the classic default; register your own as data with procedural patterns, decoration layers, face emblems and image textures
 - 📦 Lightweight, modular, no UI framework lock-in
 
 ---
@@ -156,7 +156,7 @@ Keys are face *values* (as strings), not face indices. Decals follow the target-
 
 ## 💎 Dice sets
 
-A dice set is a named look: body finish, edge metal, numeral style and optional face decoration, rendered with physically based materials and reflections. Five sets ship with the library; `classic` is the original look and stays the default.
+A dice set is a named look: body finish, edge metal, numeral style and optional face decoration, rendered with physically based materials and reflections. Ten sets ship with the library; `classic` is the original look and stays the default.
 
 | id | look |
 |---|---|
@@ -166,8 +166,15 @@ A dice set is a named look: body finish, edge metal, numeral style and optional 
 | `sapphire-jewel` | Sapphire variant of Ruby Jewel. |
 | `obsidian-gold` | Black glass, gold inlaid numerals, gold edges. |
 | `ember-dragonhide` | Dark scaled hide, iron edges, glowing ember numerals. |
+| `tidepool-pour` | Poured marble in navy, cream, gold and rust with cream lacing, every face different; engraved gold numerals, gold frame and edges. |
+| `witchlight-vines` | Deep teal body wreathed in glowing pale-mint vines, mint glow numerals, silver edges. |
+| `mainframe` | Near-black green body with glowing circuit traces, green monospace glow numerals, iron edges. |
+| `rosewood-knotwork` | Rosewood pour with a gold knotwork border, engraved cream numerals, a gold sunburst emblem on the 20, gold edges. |
+| `rose-felt` | Dusty pink felt, matte with no edge metal, darker rose corner ornaments, engraved plum numerals. |
 
 ![Ruby Jewel d20](docs/sets/ruby-jewel-d20.png) ![Obsidian & Gold d20](docs/sets/obsidian-gold-d20.png) ![Ember Dragonhide d20](docs/sets/ember-dragonhide-d20.png)
+
+![Tidepool Pour d20](docs/sets/tidepool-pour-d20.png) ![Witchlight Vines d20](docs/sets/witchlight-vines-d20.png) ![Mainframe d20](docs/sets/mainframe-d20.png) ![Rosewood Knotwork d20](docs/sets/rosewood-knotwork-d20.png) ![Rose Felt d20](docs/sets/rose-felt-d20.png)
 
 ```js
 import { DiceRoller, listDiceSets, registerDiceSet } from 'open-dice-dnd';
@@ -207,7 +214,122 @@ registerDiceSet({
 });
 ```
 
-Every field a built-in set uses is available; see `src/sets/builtin/` for the five shipped definitions and `src/sets/validate.js` for the accepted ranges. Textures are 256 px canvases painted once per set, die type and face value, then cached; `clearDiceSetCaches()` frees them.
+Every field a built-in set uses is available; see `src/sets/builtin/` for the ten shipped definitions and `src/sets/validate.js` for the accepted ranges. Textures are 256 px canvases painted once per set, die type and face value, then cached; `clearDiceSetCaches()` frees them.
+
+### Patterns
+
+`body.texture` paints a procedural pattern under everything else. Seven kinds are available; the first four are unchanged from 1.4.
+
+| kind | fields | look |
+|---|---|---|
+| `noise`, `marble`, `veins`, `scales` | `color2` (required), `contrast` 0..1 (0.3), `scale` 1..12 (3) | The body colour blended toward `color2` by a noise, marble, vein or scale field, as in 1.4. |
+| `pour` | `palette` of 2 to 6 hex colours, `warp` 0..8 (4), `scale` 1..12 (3), optional `lacing: { color, width 0.005..0.1 (0.02) }` | Acrylic-pour swirls that run through the whole palette. `lacing` adds thin bright veins between the colours. |
+| `circuit` | `color2` (trace colour, required), `density` 5..120 (40), `grid` 6..24 (12), `contrast` 0..1 (0.6) | Printed-circuit traces with pads at their ends on a lattice. The traces are also the glow mask for `body.emissive`. |
+| `felt` | `color2` (grain colour, default: the body colour shaded 35 % darker), `contrast` 0..1 (0.3) | Fine matte grain. Pair it with `vignette` around 0.45 and `roughness: 1` for cloth. |
+
+Every kind accepts `perFace: true`, which seeds the pattern by face value so no two faces of a die match (the first paint then costs one pattern per face instead of one per die type). Patterns are deterministic: a definition paints the same pixels on every machine, every time.
+
+Two body fields finish the look:
+
+- `body.emissive: { color, intensity 0..4 }` lights the pattern's glow mask: the traces of `circuit`, or wherever another kind's pattern value is above 0.5. It stacks with `glow` numerals and glowing decoration layers; the brightest of the three sets the material's emissive intensity and the others are painted relative to it, so nothing clips.
+- `body.vignette` 0..1 darkens the face toward its edge in `depthColor`. Gem and glass default to 0.85 (their existing look); every other family defaults to 0.
+
+### Decoration layers
+
+`decor` is one layer or an array of up to six, painted in order. A layer takes one of three forms:
+
+```js
+decor: [
+    { art: 'frame', metal: 'silver', relief: 0.5 },                       // metal art, as in 1.4
+    { art: 'vines', color: '#CDEFEB', relief: 0.3, glow: 0.6 },           // flat colour; glow adds it to the emissive map
+    { image: { src: '/art/filigree.png' }, metal: 'gold', relief: 0.6 },  // a PNG with alpha, painted as metal (or with color)
+]
+```
+
+Each layer has exactly one of `metal` (gold | silver | bronze | iron) or `color`. `relief` 0..1 (0.6) raises the art in the normal map, `scale` 0.5..2 (1) resizes it, and `glow` 0..4 (0) is for colour layers only: a metal layer cannot glow. Metal layers paint into the metalness-roughness map; colour layers are dielectric and paint into the albedo (and the emissive map when they glow); image layers draw the image as supplied, or its alpha filled with `color`, and use the alpha as the metal and relief mask. Built-in arts:
+
+| art | shapes | content |
+|---|---|---|
+| `filigree` | all but kite | Edge bands, corner knots, vines and berries (the 1.4 art). |
+| `frame` | all but kite | The filigree's edge bands and corner knots alone, for a plain border or to stack another art inside. |
+| `corners` | all but kite | A floret at each corner: three petal discs and a centre dot. |
+| `knotwork` | tri, square, pent | A two-strand braid along each edge, the strands crossing, with corner knots. |
+| `vines` | all but kite | A vine from each edge midpoint toward the centre with two levels of branches and leaf tips, seeded per shape. |
+
+Kites (d10 and d100) get no built-in decoration: their textured face is only the upper triangle of the kite. A 1.4 definition with a single `decor` object still validates and paints exactly as before.
+
+### Face emblems
+
+`emblems` replaces the numeral on chosen face values with path art, painted with metal and relief like a decoration layer:
+
+```js
+emblems: {
+    '20': { art: 'sunburst', metal: 'gold', scale: 0.9, relief: 0.5 },
+    '1': 'skull',                                    // shorthand: numeral colour, scale 0.8
+}
+```
+
+Keys are face values as strings, looked up per corner on the d4. The d100 pair never carries an emblem: a percentile roll is read from two faces, and an emblem on either would hide a digit (a decal can still replace a face there, per roll). Built-in emblems: `sunburst`, `star`, `crown`, `skull`. An emblem takes `metal` or `color` (default: the numeral colour), `scale` 0.3..1.2 (0.8) and `relief` 0..1 (0.5), and is painted into every map the numeral would have used; a face that carries an emblem gets its own normal map, so `relief` raises it like a decoration layer. A decal on the same value wins over the emblem: the host's explicit icon beats the set's.
+
+### Image textures
+
+Any look you can paint can be a set:
+
+```js
+registerDiceSet({
+    id: 'walnut',
+    name: 'Walnut',
+    family: 'textured',
+    body: {
+        color: '#5A4634',
+        texture: { kind: 'noise', color2: '#3A2A1C' },                                // painted until the image arrives
+        image: { src: 'https://cdn.example.com/dice/walnut.jpg', fit: 'cover' },   // or fit: 'tile', scale: 2
+        normalImage: { src: 'https://cdn.example.com/dice/walnut-normal.png' },
+    },
+    edge: { metal: 'bronze' },
+    numeral: { color: '#F3E7CF', style: 'engraved' },
+    decor: [{ image: { src: '/art/sigil.png' }, metal: 'bronze', relief: 0.5 }],
+    swatch: ['#5A4634', '#8A6A4A'],
+});
+```
+
+- `body.image` replaces the pattern as the albedo base. `cover` scales the image to fill the face texture; `tile` repeats it `scale` (0.25..8) times across the face. Vignette, decoration and numerals paint on top as usual. The `textured` family still requires a `body.texture`; it is what the face shows until the image loads.
+- `body.normalImage` is a tangent-space normal map used in place of the generated relief; decoration relief is still composited over it.
+- Decoration image layers are PNGs with alpha, painted as metal or colour (see Decoration layers).
+
+Images load through the roller's `DecalRegistry` with `crossOrigin = 'anonymous'`, so a cross-origin host must answer with `Access-Control-Allow-Origin`; without that header the browser refuses to let the canvas read the image and it counts as failed. A face whose images have not arrived paints without them (its pattern or plain body colour) and repaints when they land; a failed image logs one warning per `src` and the fallback stays. To avoid the swap, preload: `await roller.preloadSets(['walnut'])` loads every image the set references before painting, and `prepareDiceSets({ renderer, scene, decalRegistry, sets: ['walnut'] })` does the same for `createDie` used without a roller (pass the roller's `decalRegistry` or your own `DecalRegistry`; without one, faces paint their fallback and nothing is scheduled).
+
+### Custom art
+
+Register your own decoration arts and emblems as SVG path data, before the sets that use them:
+
+```js
+import { registerDecorArt, registerEmblemArt, registerDiceSet } from 'open-dice-dnd';
+
+registerDecorArt('house-sigil', {
+    tri:    [{ d: 'M -0.5 -0.3 L 0.5 -0.3 L 0 0.6 Z', stroke: 0, fill: true }],
+    square: [{ d: 'M -0.6 -0.6 L 0.6 -0.6 L 0.6 0.6 L -0.6 0.6 Z', stroke: 0.05, fill: false }],
+    // triCorners (d4) and pent (d12) left out: those faces paint nothing from this art
+});
+
+registerEmblemArt('house-mark', [
+    { d: 'M 0 1 L 0.95 -0.3 L -0.95 -0.3 Z M 0 0.4 L 0.3 -0.1 L -0.3 -0.1 Z', stroke: 0, fill: true, rule: 'evenodd' },
+]);
+
+registerDiceSet({
+    // ...body, edge, numeral, swatch...
+    decor: [{ art: 'house-sigil', metal: 'bronze' }],
+    emblems: { '20': 'house-mark' },
+});
+```
+
+Decoration art is drawn in the **unit frame**: the face polygon's vertices lie on the unit circle, vertex 0 at (1, 0), y up, and the painter maps that frame onto the face of each die type. The shapes are `tri` (d8, d20), `triCorners` (the d4, whose three numerals sit at the corners), `square` (d6), `pent` (d12) and `kite` (d10, d100). Emblem art is drawn in a unit circle (radius 1, centred, y up) and scaled by the emblem's `scale`.
+
+Each path is `{ d, stroke, fill, rule? }`. `d` may use only the SVG commands `M L H V C S Q T A Z` (uppercase or lowercase) and numbers. A fill path has `fill: true` and stroke 0; a stroke path has `fill: false` and a positive `stroke` width in frame units (the built-ins use 0.02 to 0.06). `rule: 'evenodd'` cuts holes. Ids are kebab-case, a built-in id cannot be replaced, and registration throws on the first invalid path without storing anything, so an art never half-registers. `registerDiceSet` checks that every `art` a set names exists.
+
+### Fonts
+
+Two numeral families are embedded, subset to the digits and `?` under the SIL Open Font License: `OpenDiceNumerals`, the engraved serif every set used until now (the default), and `OpenDiceMono`, a monospace for circuit and console looks. `numeral.font` takes either name, or any other family name verbatim for the browser to resolve (loading that font is up to you). `ensureNumeralFont()` loads both embedded families; faces painted before they load use the system fallback and are cached separately.
 
 ---
 
@@ -467,6 +589,18 @@ npm run build
 ---
 
 ## 📝 Changelog
+
+### [1.5.0] - 2026-10-03
+
+- Three new procedural patterns: `pour` (marbled pour with optional lacing), `circuit` (seeded traces and pads, also the emissive mask) and `felt`; every pattern accepts `perFace` for a different seed on each face
+- Glowing bodies: `body.emissive` lights the pattern itself; `body.vignette` is now a tunable field
+- Decoration becomes a list of up to six layers: metal arts, flat-colour arts with optional glow, and image layers; new built-in arts `frame`, `corners`, `knotwork` and `vines`
+- `emblems` replace the numeral on chosen face values with path art (built-in `sunburst`, `skull`, `star`, `crown`), painted with metal or colour and relief; the d100 pair never carries one, so percentile rolls stay readable
+- Image textures: `body.image` and `body.normalImage` paint a set from PNGs, preloaded with `preloadSets()` and repainted when they arrive; a set without a roller paints its fallback and never throws
+- Second embedded numeral font `OpenDiceMono`; `numeral.font` takes either embedded family or any name for the browser to resolve
+- `registerDecorArt()` and `registerEmblemArt()` accept SVG path data for your own borders and emblems
+- Five new built-in sets: Tidepool Pour, Witchlight Vines, Mainframe, Rosewood Knotwork, Rose Felt
+- 1.4.0 set definitions validate and paint unchanged; Classic stays pixel-identical and the five 1.4.0 sets keep their look
 
 ### [1.4.0] - 2026-10-03
 

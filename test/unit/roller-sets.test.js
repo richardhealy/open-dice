@@ -1,7 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DiceRoller } from '../../src/DiceRoller.js';
 import { _resetRegistryForTests, CLASSIC_SET } from '../../src/sets/index.js';
-import { GEM } from './helpers/sets.js';
+import { prepareDiceSets } from '../../src/sets/prepare.js';
+import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
+import { clearDiceSetCaches } from '../../src/sets/texture-cache.js';
+import { makeRecordingCanvas } from './helpers/canvas-stub.js';
+import { GEM, IMAGE, BODY_IMAGE_SRC, DECOR_IMAGE_SRC, NORMAL_IMAGE_SRC } from './helpers/sets.js';
 import * as lib from '../../src/index.js';
 
 describe('DiceRoller set gating (prototype methods on a bare object)', () => {
@@ -38,7 +42,7 @@ describe('DiceRoller set gating (prototype methods on a bare object)', () => {
 
 describe('public exports', () => {
     it('exposes the set API', () => {
-        for (const name of ['registerDiceSet', 'listDiceSets', 'getDiceSet', 'resolveSet', 'clearDiceSetCaches', 'installEnvironment', 'ensureNumeralFont', 'prepareDiceSets']) {
+        for (const name of ['registerDiceSet', 'listDiceSets', 'getDiceSet', 'resolveSet', 'clearDiceSetCaches', 'installEnvironment', 'ensureNumeralFont', 'prepareDiceSets', 'registerDecorArt', 'registerEmblemArt']) {
             expect(typeof lib[name]).toBe('function');
         }
         expect(lib.CLASSIC_DICE_SET).toBe('classic');
@@ -96,5 +100,61 @@ describe('DiceRoller first-set-roll gating (C1 / I5)', () => {
         try { proto.destroy.call(r); } finally { globalThis.window = saved; }
         expect(r._destroyed).toBe(true);
         expect(r.isAnimating).toBe(false);
+    });
+});
+
+describe('image preload for sets', () => {
+    const proto = DiceRoller.prototype;
+    let canvases, restore;
+    beforeEach(() => {
+        _resetRegistryForTests();
+        clearDiceSetCaches();
+        canvases = [];
+        restore = setCanvasFactories({
+            canvas: (size) => { const c = makeRecordingCanvas(size); canvases.push(c); return c; },
+            path2D: (d) => ({ d }),
+        });
+    });
+    afterEach(() => restore());
+
+    function registryStub(onPreload) {
+        return {
+            get: () => undefined,
+            load: () => Promise.resolve(null),
+            preload: vi.fn((srcs) => { if (onPreload) onPreload(srcs); return Promise.resolve(srcs.map(() => null)); }),
+        };
+    }
+
+    it('preloadSets loads every image of the listed sets through the registry before any face is painted', async () => {
+        let paintedAtPreload = -1;
+        const registry = registryStub(() => { paintedAtPreload = canvases.length; });
+        const roller = { decalRegistry: registry, diceMaterial: null, _ensureSetAssets: vi.fn(() => Promise.resolve()), preloadSets: proto.preloadSets };
+        await roller.preloadSets([IMAGE, GEM, 'classic']);
+        expect(roller._ensureSetAssets).toHaveBeenCalledTimes(1);
+        expect(registry.preload).toHaveBeenCalledTimes(1);
+        expect(registry.preload.mock.calls[0][0]).toEqual([BODY_IMAGE_SRC, DECOR_IMAGE_SRC]);
+        expect(paintedAtPreload).toBe(0);
+        expect(canvases.length).toBeGreaterThan(0);
+    });
+
+    it('preloadSets leaves the registry alone when the listed sets have no images', async () => {
+        const registry = registryStub();
+        const roller = { decalRegistry: registry, diceMaterial: null, _ensureSetAssets: () => Promise.resolve(), preloadSets: proto.preloadSets };
+        await roller.preloadSets([GEM]);
+        expect(registry.preload).not.toHaveBeenCalled();
+        expect(canvases.length).toBeGreaterThan(0);
+    });
+
+    it('prepareDiceSets preloads the images of the given sets when a registry is passed, and skips them otherwise', async () => {
+        const registry = registryStub();
+        const withNormal = { ...IMAGE, id: 'prep-normal', body: { ...IMAGE.body, normalImage: { src: NORMAL_IMAGE_SRC } } };
+        const fontLoaded = await prepareDiceSets({ decalRegistry: registry, sets: [IMAGE, withNormal, GEM, 'classic'] });
+        expect(typeof fontLoaded).toBe('boolean');
+        expect(registry.preload).toHaveBeenCalledTimes(1);
+        expect(registry.preload.mock.calls[0][0]).toEqual([BODY_IMAGE_SRC, DECOR_IMAGE_SRC, NORMAL_IMAGE_SRC]);
+        await expect(prepareDiceSets({ sets: [IMAGE] })).resolves.toBe(fontLoaded);           // no registry: nothing to load into
+        await expect(prepareDiceSets({ decalRegistry: registry })).resolves.toBe(fontLoaded);  // no sets: nothing to load
+        await expect(prepareDiceSets({ decalRegistry: registry, sets: [GEM] })).resolves.toBe(fontLoaded);
+        expect(registry.preload).toHaveBeenCalledTimes(1);
     });
 });

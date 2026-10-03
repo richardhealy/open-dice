@@ -6,6 +6,7 @@ import { SoundManager } from './sound-manager.js';
 import { glow, scalePulse, haloRing, runEffectsRules } from './effects/index.js';
 import { resolveSet, CLASSIC } from './sets/index.js';
 import { prepareDiceSets } from './sets/prepare.js';
+import { collectSetImages } from './sets/face-materials.js';
 import { setTextureAnisotropy } from './sets/texture-cache.js';
 import { resolvePixelRatio, clampPixelRatioToBuffer } from './pixel-ratio.js';
 
@@ -401,15 +402,17 @@ export class DiceRoller {
 
     /**
      * Prepare dice sets ahead of the first roll: loads the numeral font, installs the
-     * environment map, and paints every face of every die type for the listed sets so the
-     * first roll does no painting. Optional; rolls work without it.
+     * environment map, loads every image the listed sets reference (body, normal and
+     * decoration images) and paints every face of every die type for them, so the first
+     * roll does no painting and never shows an image's fallback. Optional; rolls work without it.
      * @param {string[]} ids
      */
     async preloadSets(ids = []) {
         await this._ensureSetAssets();
-        for (const id of ids) {
-            const set = resolveSet(id);
-            if (set.id === CLASSIC) continue;
+        const sets = ids.map((id) => resolveSet(id)).filter((set) => set.id !== CLASSIC);
+        const images = [...new Set(sets.flatMap((set) => collectSetImages(set)))];
+        if (images.length > 0) await this.decalRegistry.preload(images);
+        for (const set of sets) {
             for (const type of DIE_TYPES) {
                 const halves = type === 'd100' ? [true, false] : [true];
                 for (const isFirst of halves) {

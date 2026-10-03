@@ -1,9 +1,10 @@
 /**
- * Seeded value noise, fBm and the four body-texture patterns. Everything here is pure and
- * deterministic so a set paints identically on every machine and every face of a die.
+ * Seeded value noise, fBm and the four scalar body-texture patterns. Everything here is pure and
+ * deterministic so a set paints identically on every machine and every face of a die. The three
+ * colour-producing kinds (pour, circuit, felt) live in patterns.js and build on these primitives.
  */
 
-export const PATTERN_KINDS = ['noise', 'marble', 'veins', 'scales'];
+export const PATTERN_KINDS = ['noise', 'marble', 'veins', 'scales', 'pour', 'circuit', 'felt'];
 
 /** 32-bit string hash (FNV-style mixing). */
 export function hashSeed(str) {
@@ -15,7 +16,8 @@ export function hashSeed(str) {
     return h >>> 0;
 }
 
-function lattice(seed, ix, iy) {
+/** Hash of an integer lattice point to 0..1; the seeded random source for every generator. */
+export function lattice(seed, ix, iy) {
     let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263) + seed) | 0;
     h = Math.imul(h ^ (h >>> 13), 1274126177);
     return ((h ^ (h >>> 16)) >>> 0) / 4294967296;

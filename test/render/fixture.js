@@ -3,10 +3,57 @@ import * as THREE from 'three';
 // missing export is a link-time error.
 import * as lib from '../../src/index.js';
 
-const { DiceRoller, createDie } = lib;
+const { DiceRoller, createDie, registerDiceSet } = lib;
 const SIZE = 320;
 const container = document.getElementById('stage');
 const roller = new DiceRoller({ container, width: SIZE, height: SIZE });
+
+/** A 64x64 PNG data URL painted here, so the image path needs no network. */
+function pngDataUrl(paint) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    paint(c.getContext('2d'));
+    return c.toDataURL('image/png');
+}
+
+// Test-only set exercising image textures: a checkerboard body image and a ring with alpha as
+// a metal decoration image layer. Registered at load; the harness renders it on its own and
+// keeps it out of the catalogue loop and the previews.
+const FIXTURE_IMAGE_SET = 'fixture-image';
+const checkerboard = pngDataUrl((ctx) => {
+    for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+            ctx.fillStyle = (x + y) % 2 === 0 ? '#EEE4D2' : '#2F5BA8';
+            ctx.fillRect(x * 8, y * 8, 8, 8);
+        }
+    }
+});
+const ring = pngDataUrl((ctx) => {
+    ctx.strokeStyle = '#D4AF37';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(32, 32, 24, 0, Math.PI * 2);
+    ctx.stroke();
+});
+registerDiceSet({
+    id: FIXTURE_IMAGE_SET,
+    name: 'Fixture Image',
+    family: 'textured',
+    body: {
+        color: '#3A3A3A',
+        depthColor: '#1E1E1E',
+        roughness: 0.5,
+        vignette: 0,
+        // The fallback painted until the images load; the body image replaces it.
+        texture: { kind: 'noise', color2: '#505050', contrast: 0.2 },
+        image: { src: checkerboard, fit: 'cover' },
+        normalStrength: 0.3,
+    },
+    edge: { metal: 'gold' },
+    numeral: { color: '#111111', style: 'engraved' },
+    decor: [{ image: { src: ring }, metal: 'gold', relief: 0.6 }],
+    swatch: ['#2F5BA8', '#EEE4D2', '#D4AF37'],
+});
 // The game camera frames an 18-unit-tall table; zoom in so one die fills the frame.
 roller.camera.zoom = 5.2;
 roller.camera.updateProjectionMatrix();
@@ -31,14 +78,18 @@ function poseFor(type) {
 }
 
 // `half` is 'tens' to render the second die of a d100 pair (isFirst = false), else the units.
-window.__renderDie = async (type, setId, half = 'units') => {
+// `preload: false` skips the set's image preload (the font and environment still load) so the
+// die paints its fallback; `key` stores the pixels under another name than `<set>-<type>`.
+window.__renderDie = async (type, setId, half = 'units', { preload = true, key = null } = {}) => {
     if (setId !== 'classic' && typeof roller.preloadSets === 'function') {
-        await roller.preloadSets([setId]);
+        await roller.preloadSets(preload ? [setId] : []);
     }
     if (current) roller.scene.remove(current.mesh);
     const options = setId === 'classic' ? {} : { set: setId };
+    // The roller's registry is passed so set images (and their repaint) go through the same
+    // path as in the app; sets without images, and classic, paint exactly as without one.
     const die = createDie(type, true, half !== 'tens', undefined, undefined, null, roller.scene, null,
-        null, null, null, false, null, null, options);
+        null, null, null, false, null, roller.decalRegistry, options);
     die.mesh.quaternion.copy(poseFor(type));
     die.mesh.position.set(0, 1.2, 0);
     current = die;
@@ -53,7 +104,7 @@ window.__renderDie = async (type, setId, half = 'units') => {
     ctx.fillStyle = '#2b2f36';
     ctx.fillRect(0, 0, px, px);
     ctx.drawImage(roller.renderer.domElement, 0, 0, px, px);
-    window.__renders[`${setId}-${type}${half === 'tens' ? '-tens' : ''}`] = ctx.getImageData(0, 0, px, px).data;
+    window.__renders[key || `${setId}-${type}${half === 'tens' ? '-tens' : ''}`] = ctx.getImageData(0, 0, px, px).data;
     return out.toDataURL('image/png');
 };
 
@@ -81,8 +132,9 @@ window.__diff = (a, b) => {
     return differing / (A.length / 4);
 };
 
+// The catalogue the harness loops over: every registered set except the fixture-only ones.
 window.__listSets = () => (typeof lib.listDiceSets === 'function'
-    ? lib.listDiceSets().map((s) => s.id)
+    ? lib.listDiceSets().map((s) => s.id).filter((id) => id !== FIXTURE_IMAGE_SET)
     : ['classic']);
 
 window.__ready = true;

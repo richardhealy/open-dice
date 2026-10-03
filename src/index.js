@@ -14,6 +14,7 @@ export { clearDiceSetCaches } from './sets/texture-cache.js';
 export { installEnvironment } from './sets/environment.js';
 export { ensureNumeralFont } from './sets/fonts/numerals.js';
 export { prepareDiceSets } from './sets/prepare.js';
+export { registerDecorArt, registerEmblemArt } from './sets/art-registry.js';
 import * as diceSetsNamespace from './sets/index.js';
 export const diceSets = diceSetsNamespace;
 
