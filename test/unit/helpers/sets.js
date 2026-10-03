@@ -6,7 +6,7 @@ export const GEM = Object.freeze({
             normalStrength: 0, envMapIntensity: 1 },
     edge: { metal: 'gold' },
     numeral: { font: 'OpenDiceNumerals', weight: 700, color: '#2A0912', style: 'engraved', metal: null, glow: null, scale: 1 },
-    decor: { art: 'filigree', metal: 'gold', relief: 0.6 },
+    decor: [{ art: 'filigree', image: null, metal: 'gold', color: null, relief: 0.6, scale: 1, glow: 0 }],
     swatch: ['#B5173A', '#D4AF37'],
 });
 

@@ -6,6 +6,7 @@ import { heightToNormal } from './normal-map.js';
 import { getDecor } from './decor/index.js';
 import { NUMERAL_FONT_FAMILY, NUMERAL_FONT_FALLBACK } from './fonts/numerals.js';
 import { drawDecalImage, drawD4CornerDecal, isUnderlined } from '../face-texture.js';
+import { hexToRgb, rgbToHex, shade } from './color.js';
 
 /** Same size the classic path uses (calculateTextureSize(...) * 2). */
 export const TEXTURE_SIZE = 256;
@@ -22,20 +23,7 @@ export const CORNER_OFFSET = 0.3;
  */
 export const BODY_EXPOSURE = -0.38;
 
-export function hexToRgb(hex) {
-    const n = parseInt(hex.slice(1), 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-export function rgbToHex([r, g, b]) {
-    return '#' + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('');
-}
-
-/** Lighten (amount > 0) or darken (amount < 0) a hex colour by a fraction of the distance to white/black. */
-export function shade(hex, amount) {
-    const rgb = hexToRgb(hex);
-    return rgbToHex(rgb.map((c) => (amount >= 0 ? c + (255 - c) * amount : c * (1 + amount))));
-}
+export { hexToRgb, rgbToHex, shade };
 
 /**
  * Inlay numerals are gilded paint rather than mirror metal: a pure metal has no diffuse
@@ -131,11 +119,24 @@ function fillBase(ctx, ts, set, type, mode) {
     }
 }
 
+/** The validator hands the painter an array of layers; a hand-built set may still pass one object. */
+function decorLayers(set) {
+    if (!set.decor) return [];
+    return Array.isArray(set.decor) ? set.decor : [set.decor];
+}
+
 function paintDecor(ctx, ts, set, type, mode) {
-    if (!set.decor || mode === 'emissive') return;
+    if (mode === 'emissive') return;
+    // Metal art layers only for now; colour, glow and image layers arrive with the layer painter.
+    for (const layer of decorLayers(set)) {
+        if (layer.art && layer.metal) paintMetalArt(ctx, ts, layer, type, mode);
+    }
+}
+
+function paintMetalArt(ctx, ts, layer, type, mode) {
     const frame = FACE_FRAMES[type];
-    const paths = getDecor(set.decor.art, frame.shape);
-    const metal = METALS[set.decor.metal];
+    const paths = getDecor(layer.art, frame.shape);
+    const metal = METALS[layer.metal];
     const colour = mode === 'albedo' ? metal.color
         : mode === 'mr' ? mrColor(metal.roughness, metal.metalness)
         : '#ffffff';
@@ -293,7 +294,7 @@ export function paintFace({ set, type, face, isSecret = false, decals = null, de
  */
 export function paintNormalMap({ set, type }) {
     const ts = TEXTURE_SIZE;
-    const relief = set.decor ? set.decor.relief : 0;
+    const relief = decorLayers(set).reduce((max, layer) => Math.max(max, layer.art && layer.metal ? layer.relief : 0), 0);
     const textureStrength = set.body.texture ? set.body.normalStrength : 0;
     if (relief <= 0 && textureStrength <= 0) return null;
 

@@ -17,7 +17,7 @@ describe('built-in sets', () => {
         expect(ruby.family).toBe('gem');
         expect(ruby.edge.metal).toBe('gold');
         expect(ruby.numeral.style).toBe('engraved');
-        expect(ruby.decor).toEqual({ art: 'filigree', metal: 'gold', relief: 0.6 });
+        expect(ruby.decor).toEqual([{ art: 'filigree', image: null, metal: 'gold', color: null, relief: 0.6, scale: 1, glow: 0 }]);
         expect(ruby.body.glow).toEqual({ color: '#FF2D55', intensity: 0.18 });
         const emerald = getDiceSet('emerald-jewel');
         expect(emerald.decor).toEqual(ruby.decor);

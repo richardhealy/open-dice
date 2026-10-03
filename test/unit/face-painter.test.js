@@ -129,6 +129,22 @@ describe('face painter', () => {
         expect(callsNamed(existing, 'setTransform')[0].args).toEqual([1, 0, 0, 1, 0, 0]);
     });
 
+    it('a 1.4.0 object decor and its normalised one-layer array paint identical calls (Review Focus 1)', () => {
+        const legacy = { ...GEM, decor: { art: 'filigree', metal: 'gold', relief: 0.6 } };
+        const calls = (set, mode) => {
+            canvases = [];
+            _clearPatternCacheForTests();
+            paintFace({ set, type: 'd20', face: '20', mode });
+            // Canvas, gradient and ImageData arguments are fresh objects each run: compare their
+            // content (functions and pixel buffers reduced to stable markers), not their identity.
+            const stable = (k, v) => (typeof v === 'function' ? '<fn>'
+                : v && v.BYTES_PER_ELEMENT ? `bytes:${v.length}:${v.reduce((sum, x) => sum + x, 0)}` : v);
+            return canvases.flatMap((c) => c.getContext('2d').calls.map((call) => JSON.stringify(call, stable)));
+        };
+        for (const mode of ['albedo', 'mr', 'height']) expect(calls(GEM, mode)).toEqual(calls(legacy, mode));
+        expect(paintNormalMap({ set: legacy, type: 'd20' })).not.toBeNull();
+    });
+
     it('normal map exists for decor relief or textured bodies and is null otherwise', () => {
         expect(paintNormalMap({ set: GEM, type: 'd20' })).not.toBeNull();         // decor relief
         expect(paintNormalMap({ set: GLOW, type: 'd20' })).not.toBeNull();        // texture strength
