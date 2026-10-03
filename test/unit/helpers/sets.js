@@ -101,3 +101,11 @@ export const IMAGE = Object.freeze({
     body: { ...INLAY.body, image: { src: BODY_IMAGE_SRC, fit: 'cover', scale: 1 } },
     decor: [{ art: null, image: { src: DECOR_IMAGE_SRC }, metal: 'gold', color: null, relief: 0.6, scale: 1, glow: 0 }],
 });
+
+export const NORMAL_IMAGE_SRC = 'https://example.test/marble-normal.png';
+
+/** The circuit set with the glowing vines: numerals 1.6, body 0.35 and decor 0.6 share one material (Review Focus 5). */
+export const GLOW_ALL = Object.freeze({
+    ...CIRCUIT, id: 'test-glow-all', name: 'Test Glow All',
+    decor: VINES.decor,
+});
