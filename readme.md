@@ -438,6 +438,15 @@ It resolves `{ ok: true, model, report }`, or `{ ok: false, reason }` when the s
 
 ### Exact die shapes
 
+### How a saved die rolls: `testModelDie(model, options)`
+
+`analyzeModelDie` reports the odds of the throws it analysed, a few hundred by default. To say how fairly a die rolls, throw it many more times: `testModelDie(model, { type, throws = 5000, seed = 1, onProgress })` takes a saved `models` entry (its `hull` and `faces`; labels are ignored), throws it with the same physics and reads each throw as a roll does, as the face whose `up` lies nearest the resting up. It reads the faces as saved, swaps included, so it measures the die players roll even when a longer run would cluster differently. It resolves to the same report as the analysis: `{ throws, distribution, chiSquare, maxDeviation, unusedShare, warnings }`.
+
+```js
+const { distribution, chiSquare } = await testModelDie(design.models.d20, { type: 'd20', throws: 5000 });
+// distribution: { 1: 0.09, 2: 0.08, …, 13: 0.003, … } against a fair 0.05 each
+```
+
 When the geometry must stay a true polyhedron (a texturing service paints it, the art comes later), start from the library's shape: `dieShape(type, { rounding, stopper })` builds the classic polyhedron at the classic size with rounded edges (a d4 stands on its base, a corner up) and, with `stopper: { radius, height }`, a short cylinder on top for flasks. `shapeToGlb(object)` writes any object's geometry as a GLB to hand over. Load the painted file, analyse it and register it like any other model.
 
 ### Rendering notes
@@ -705,6 +714,10 @@ npm run build
 ---
 
 ## 📝 Changelog
+
+### [1.9.0] - 2026-10-04
+
+- 🧊 `testModelDie(model, { type, throws })` throws a saved model die thousands of times and reports how fairly it rolls, reading each throw from the faces as saved: the odds players get, for a fairness label.
 
 ### [1.8.0] - 2026-10-03
 

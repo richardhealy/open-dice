@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { analyzeModelDie, remapModelValues, summarizeThrows } from '../../src/models/analyze.js';
+import { analyzeModelDie, remapModelValues, summarizeThrows, testModelDie } from '../../src/models/analyze.js';
 import { buildHull, hullVolume } from '../../src/models/hull.js';
 import { classicVolume } from '../../src/models/analyze.js';
 import { validateSet } from '../../src/sets/validate.js';
@@ -200,3 +200,35 @@ describe('remapModelValues', () => {
         expect(() => remapModelValues(model, { 1: 2 })).toThrow(/permutation/);
     });
 });
+
+describe('testModelDie', () => {
+    it('throws a saved model die and reads each throw from its faces, as the analysis does', async () => {
+        const r = await analyzeModelDie(tetraScene(), { type: 'd4', throws: 200, seed: 7 });
+        expect(r.ok).toBe(true);
+        // The same throws, read from the saved entry alone: the analysis's own shares.
+        const t = await testModelDie(r.model, { type: 'd4', throws: 200, seed: 7 });
+        expect(t.throws).toBe(200);
+        expect(t.distribution).toEqual(r.report.distribution);
+        expect(t.chiSquare).toBeCloseTo(r.report.chiSquare, 9);
+    });
+
+    it('follows the values as saved, after a swap', async () => {
+        const r = await analyzeModelDie(tetraScene(), { type: 'd4', throws: 120, seed: 2 });
+        const swapped = remapModelValues(r.model, { 1: 4, 4: 1 });
+        const before = await testModelDie(r.model, { type: 'd4', throws: 120, seed: 9 });
+        const after = await testModelDie(swapped, { type: 'd4', throws: 120, seed: 9 });
+        expect(after.distribution[4]).toBe(before.distribution[1]);
+        expect(after.distribution[1]).toBe(before.distribution[4]);
+    });
+
+    it('counts every throw, reports progress, and refuses an entry that is not a model die', async () => {
+        const r = await analyzeModelDie(tetraScene(), { type: 'd4', throws: 80, seed: 1 });
+        const seen = [];
+        const t = await testModelDie(r.model, { type: 'd4', throws: 50, onProgress: (p) => seen.push(p) });
+        expect(Object.values(t.distribution).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+        expect(seen.at(-1)).toBe(1);
+        await expect(testModelDie({ ...r.model, hull: [[0, 0, 0]] }, { type: 'd4', throws: 10 })).rejects.toThrow(/hull/);
+        await expect(testModelDie(r.model, { type: 'd7', throws: 10 })).rejects.toThrow(/type/);
+    });
+});
+

@@ -78,7 +78,7 @@ describe('model loader', () => {
 describe('model dice in the public API', () => {
     it('exports the model dice functions and constants', async () => {
         const lib = await import('../../src/index.js');
-        for (const name of ['setModelLoader', 'clearModelCache', 'analyzeModelDie', 'remapModelValues', 'dieShape', 'shapeToGlb', 'dieMaterials']) {
+        for (const name of ['setModelLoader', 'clearModelCache', 'analyzeModelDie', 'testModelDie', 'remapModelValues', 'dieShape', 'shapeToGlb', 'dieMaterials']) {
             expect(typeof lib[name]).toBe('function');
         }
         expect(lib.MODEL_DIE_TYPES).toEqual(['d4', 'd6', 'd8', 'd10', 'd12', 'd20']);
