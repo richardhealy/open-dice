@@ -20,7 +20,7 @@ export { registerDecorArt, registerEmblemArt } from './sets/art-registry.js';
 // See README "Model dice". The GLTF loader lives at 'open-dice-dnd/gltf'.
 export { setModelLoader, clearModelCache } from './models/loader.js';
 export { MODEL_DIE_TYPES, MODEL_DIE_VALUES } from './models/spec.js';
-export { analyzeModelDie, remapModelValues } from './models/analyze.js';
+export { analyzeModelDie, testModelDie, remapModelValues } from './models/analyze.js';
 export { dieShape, shapeToGlb } from './models/shapes.js';
 import * as diceSetsNamespace from './sets/index.js';
 export const diceSets = diceSetsNamespace;

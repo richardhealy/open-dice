@@ -475,6 +475,42 @@ export async function analyzeModelDie(object, options = {}) {
 }
 
 /**
+ * How a saved model die rolls: throw its `models` entry (hull and faces) `throws` times in the
+ * studio's world and read each throw as a roll does, as the face whose up lies nearest the
+ * resting up. Unlike re-running analyzeModelDie, it reads the faces as saved (swaps included),
+ * so a long test measures the very die players roll.
+ * @param {object} model a `models` entry: { hull, faces, ... }
+ * @param {{ type: string, throws?: number, seed?: number, onProgress?: (fraction: number) => void }} options
+ * @returns {Promise<{ throws: number, distribution: Record<number, number>, chiSquare: number, maxDeviation: number, unusedShare: number, warnings: string[] }>}
+ */
+export async function testModelDie(model, options = {}) {
+    const { type, throws = 5000, seed = 1, onProgress = null } = options;
+    if (!MODEL_DIE_TYPES.includes(type)) throw new Error(`open-dice-dnd: testModelDie needs a type: one of ${MODEL_DIE_TYPES.join(', ')}`);
+    try {
+        modelsSpec({ [type]: { src: 'model', ...model } });
+    } catch (error) {
+        throw new Error(`open-dice-dnd: testModelDie: ${error.message.replace(/^open-dice-dnd: invalid dice set — /, '')}`);
+    }
+    const hull = buildHull(model.hull);
+    const faces = model.faces.map((f) => ({ value: f.value, up: new THREE.Vector3().fromArray(f.up).normalize() }));
+    const physics = studioWorld();
+    const rand = prng(seed);
+    const counts = {};
+    for (let t = 0; t < throws; t++) {
+        const u = throwOnce(physics, hull, throwSeed(rand));
+        let best = faces[0], bestDot = -Infinity;
+        for (const f of faces) { const d = f.up.dot(u); if (d > bestDot) { bestDot = d; best = f; } }
+        counts[best.value] = (counts[best.value] || 0) + 1;
+        if ((t + 1) % 10 === 0 && t + 1 < throws) {
+            if (onProgress) onProgress((t + 1) / throws);
+            await tick();
+        }
+    }
+    if (onProgress) onProgress(1);
+    return summarizeThrows(counts, { values: MODEL_DIE_VALUES[type], type });
+}
+
+/**
  * A copy of a model entry with its values renamed through `mapping` ({ from: to }), on faces
  * and labels together. The mapping must be a permutation of the values the faces use.
  */
