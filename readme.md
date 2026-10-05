@@ -419,6 +419,7 @@ A model die settles only after it has stayed at rest for ten physics steps in a 
 | `faces` | One `{ value, up }` per value of the die: the die reads `value` when `up` (die frame) points up. Values match the classic dice: d4 1-4, d6 1-6, d8 1-8, d10 0-9, d12 1-12, d20 1-20. |
 | `labels` | Optional numbers the library draws: `{ value, position, normal, up, size }`, a square decal `size` wide projected onto the surface along `-normal`, upright towards `up`. Without labels a replayed roll cannot show its value. |
 | `numeral` | Optional `{ color, outline: { color, width } }` for the labels; font and weight come from the design. |
+| `liquid` | Optional: the model becomes a clear glass flask with a draught inside that keeps level with the table, sloshes with the throw and settles after landing. `{ color, surfaceColor, glow: { color, intensity }, level, thickness, glass: { color, opacity, roughness }, neck, slosh }`; see "Liquid" below. |
 
 `registerDiceSet` validates every field and names the failing one. d100 keeps its procedural dice.
 
@@ -457,6 +458,17 @@ When the geometry must stay a true polyhedron (a texturing service paints it, th
 - Colour textures are read as they are, like the procedural dice (the roller renders in linear space), so a model looks as its preview did. This switches the loaded scene's colour textures to linear in place: load a separate copy for anything rendered in sRGB.
 - A roll waits for the models it needs; `preloadSets()` and `prepareDiceSets({ sets })` load them ahead. Without a loader, or when a file fails or takes longer than the loader's `timeoutMs` (`setModelLoader(fn, { timeoutMs })`, 20 s by default), that die rolls as the design's procedural die and one warning is logged; `clearModelCache()` retries.
 - `open-dice-dnd/gltf` parses with three's GLTFLoader bundled against the library's own `three`, so loaded scenes share the roller's three instance. It is ES only; pass `{ loader }` for a GLTFLoader with Draco or meshopt decoders, `{ fetchOptions }` for credentials. UMD users pass their own loader to `setModelLoader`.
+
+### Liquid
+
+A model entry with `liquid` renders as a flask. Triangles whose centre lies above `neck` (a die-frame height, like `hull` and `labels`) keep the model's own meshes and paint, a cork say; everything below becomes a see-through glass shell (`glass.color`, `glass.opacity` 0.05 to 0.95, `glass.roughness`). Inside it the draught is the physics hull pulled inward by `thickness` (a share of the hull's inradius, 0.01 to 0.3, default 0.06), coloured `color` with its top in `surfaceColor` (default: `color` lightened) and an optional `glow`. `level` (0.05 to 0.95, default 0.6) is the share of the draught's volume that is filled: the surface stays level with the table in every pose and holds the same volume on a base as on a side. `slosh` (0 to 2, default 1) sets how far the surface swings with the throw; it settles flat within about a second of landing, and a still die (a preview, a cover) always shows a level fill.
+
+```js
+models: { d4: { src, hull, faces, labels, ...,
+    liquid: { color: '#B3122A', glow: { color: '#FF3B4E', intensity: 0.3 }, level: 0.6, neck: 0.83, glass: { color: '#FFE9EC', opacity: 0.35 } } } }
+```
+
+The draught is cut by a shader in the die's own material (the glass has no refraction; it shows the scene's reflections). `glow` and `reset()` reach the draught and the glass like any material; `dieMaterials(die)` lists them. Labels are cut from the kept meshes and the outer glass only.
 
 ## 🔊 Sounds
 
@@ -714,6 +726,11 @@ npm run build
 ---
 
 ## 📝 Changelog
+
+### [1.10.0] - 2026-10-05
+
+- 🧪 Liquid in model dice: a `models` entry's `liquid` block renders the model as a clear glass flask with a draught inside that keeps level with the table in every pose, holds the same volume on a base as on a side, sloshes with the throw and settles after landing; the model's own meshes stay above `neck` (a cork keeps its paint). `glow` and `reset()` reach the draught and the glass. Designs without the block, classic dice and prediction dice are unchanged.
+- `reset()` fades every material from its own opacity, so a transparent material no longer pops opaque at the start of the fade.
 
 ### [1.9.0] - 2026-10-04
 
