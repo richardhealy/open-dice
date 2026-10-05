@@ -144,6 +144,10 @@ export function labelGeometry(template, label) {
     const parts = [];
     template.traverse((object) => {
         if (!object.isMesh || !object.geometry || !object.geometry.getAttribute('normal')) return;
+        // The draught and the inner shell sit under the surface: a decal box is deeper than the
+        // glass and would print a second number on them. Labels cut from the kept meshes and the
+        // outer shell only.
+        if (object.userData.liquid && object.userData.liquid !== 'outer') return;
         const decal = new DecalGeometry(object, position, orientation, size);
         if (decal.getAttribute('position').count > 0) parts.push(decal);
         else decal.dispose();

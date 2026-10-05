@@ -4,6 +4,7 @@ import { buildHull, hullShape } from './hull.js';
 import { loadedModel } from './loader.js';
 import { labelStyle, labelTexture, labelDecalTexture, labelGeometry } from './labels.js';
 import { MODEL_DIE_VALUES } from './spec.js';
+import { buildLiquidTemplate, attachLiquid } from './liquid.js';
 
 /**
  * A model die: a host-supplied 3D model whose convex hull is the physics body, read through
@@ -73,6 +74,7 @@ export function modelTemplate(model) {
         linearColourTextures(placed);
         template = new THREE.Group();
         template.add(placed);
+        if (model.liquid) buildLiquidTemplate(template, model, modelHull(model));
         template.updateMatrixWorld(true);
         perScene.set(model, template);
     }
@@ -164,11 +166,13 @@ export function createModelDie({ type, model, set, visible = true, targetNumber,
             if (decal && decal.src) showDecal(labelMaterial, decal, decalRegistry);
             const labelMesh = new THREE.Mesh(geometry, labelMaterial);
             labelMesh.userData.label = true;
-            labelMesh.renderOrder = 1;
+            labelMesh.renderOrder = 2;
             mesh.add(labelMesh);
         }
     }
-    return { mesh, body, type, model, faceValues: values };
+    const die = { mesh, body, type, model, faceValues: values };
+    if (template && model.liquid) die.liquid = attachLiquid(mesh.children[0], template, model);
+    return die;
 }
 
 const scratchQuaternion = new THREE.Quaternion();

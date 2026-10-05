@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { surfaceHeight } from './liquid-geometry.js';
+import { splitAtNeck, liquidBody, sampleCloud, surfaceHeight } from './liquid-geometry.js';
 
 /**
  * The liquid inside a model die at run time: a spring-damped slosh fed by the roller, the
@@ -152,4 +152,57 @@ export function updateSurface(mesh, state) {
     through.copy(position).addScaledVector(WORLD_UP, h);
     uniforms.uSurfaceHeight.value = through.dot(n);
     uniforms.uRipple.value.set(slosh.tilt * SLOSH.ripple, slosh.state.phase, SLOSH.rippleFrequency);
+}
+
+const CLOUD_POINTS = 1024;
+const clouds = new WeakMap();        // template -> Float32Array (Object3D.clone would JSON-copy userData)
+const warnedNeck = new WeakSet();
+
+/**
+ * Give a model template its liquid: the model split at the neck, the shell drawn twice as
+ * glass, the draught's body with a placeholder material (each die builds its own), and a
+ * sample cloud for the level. The split runs over `template` itself: it sits at identity in
+ * the die frame, so a kept mesh baked out of the transformed scene lands in the right frame.
+ */
+export function buildLiquidTemplate(template, model, hull) {
+    const liquid = model.liquid;
+    const shell = splitAtNeck(template, liquid.neck);
+    if (shell) {
+        const inner = new THREE.Mesh(shell, createGlassMaterial(liquid.glass, { inner: true }));
+        inner.name = 'liquid-shell-inner';
+        inner.userData.liquid = 'inner';
+        inner.renderOrder = 0;
+        const outer = new THREE.Mesh(shell, createGlassMaterial(liquid.glass, { inner: false }));
+        outer.name = 'liquid-shell-outer';
+        outer.userData.liquid = 'outer';
+        outer.renderOrder = 1;
+        template.add(inner, outer);
+    } else if (!warnedNeck.has(model)) {
+        warnedNeck.add(model);
+        console.warn(`open-dice-dnd: nothing lies below its liquid neck in model "${model.src}"; the model keeps its own look and the draught is drawn inside it.`);
+    }
+    const body = liquidBody(hull, liquid.thickness);
+    const bodyMesh = new THREE.Mesh(body.geometry, new THREE.MeshBasicMaterial({ color: new THREE.Color(liquid.color) }));
+    bodyMesh.name = 'liquid-body';
+    bodyMesh.userData.liquid = 'body';
+    template.add(bodyMesh);
+    clouds.set(template, sampleCloud(body, CLOUD_POINTS, 1));
+}
+
+/**
+ * One die's liquid on its clone `visual` of `template`: its own material, uniforms and slosh,
+ * the surface levelled before every render. Returns `{ mesh, state, tick }`.
+ */
+export function attachLiquid(visual, template, model) {
+    const liquid = model.liquid;
+    const mesh = visual.getObjectByName('liquid-body');
+    const cloud = clouds.get(template);
+    const uniforms = liquidUniforms(liquid);
+    mesh.material.dispose();
+    mesh.material = createLiquidMaterial(liquid, uniforms);
+    mesh.castShadow = true;
+    const slosh = createSlosh(liquid.slosh);
+    const state = { cloud, heights: new Float32Array(cloud.length / 3), level: liquid.level, slosh, uniforms };
+    mesh.onBeforeRender = () => updateSurface(mesh, state);
+    return { mesh, state, tick: (body, dt) => slosh.tick(body, dt) };
 }
