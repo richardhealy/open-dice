@@ -39,8 +39,10 @@ export function createDie(type, visible = true, isFirst = true, targetNumber, fo
 
     // A design with a loaded model for this type rolls the model: its hull is the body and its
     // shape decides the face. Until the model loads (or when it failed) the die stays procedural.
+    // `options.model === false` asks for the design's procedural die although it has a model
+    // for this type: the roller caps liquid flasks to one per throw (models/throw-allowance.js).
     const resolvedSet = options.set ? resolveSet(options.set) : null;
-    const model = resolvedSet && resolvedSet.models ? resolvedSet.models[type] : null;
+    const model = resolvedSet && resolvedSet.models && options.model !== false ? resolvedSet.models[type] : null;
     if (model && loadedModel(model.src)) {
         const die = createModelDie({ type, model, set: resolvedSet, visible, targetNumber, foundClosestIndex, isSecret, material, decals, decalRegistry });
         if (!visible) die.mesh.visible = false;

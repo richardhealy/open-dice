@@ -257,6 +257,33 @@ describe('effects and fades reach model materials', () => {
             expect(die.mesh.position.x).toBe(die.body.position.x);
         });
 
+        it('throws one flask per design and type; the other dice roll as the design\'s procedural die', () => {
+            const r = headlessRoller();
+            const { batch } = rollToRest(r, [{ dice: 'd6', set: 'liquid-cube' }, { dice: 'd6', set: 'liquid-cube' }, { dice: 'd6', set: 'liquid-cube' }]);
+            expect(batch.dice.map((d) => !!d.model)).toEqual([true, false, false]);
+            expect(batch.dice.map((d) => !!d.liquid)).toEqual([true, false, false]);
+            // The procedural dice are ordinary meshes on classic bodies, not model bodies on the hull.
+            expect(batch.dice[0].body.modelDie).toBe(true);
+            for (const die of batch.dice.slice(1)) {
+                expect(die.mesh.isMesh).toBe(true);
+                expect(die.type).toBe('d6');
+                expect(die.body.modelDie).toBeFalsy();
+            }
+        });
+
+        it('a replay shows its values on the flask and on the procedural dice alike', () => {
+            const r = headlessRoller();
+            const { batch, result } = rollToRest(r, [{ dice: 'd6', set: 'liquid-cube', rolled: 2 }, { dice: 'd6', set: 'liquid-cube', rolled: 5 }, { dice: 'd6', set: 'liquid-cube', rolled: 3 }]);
+            expect(batch.dice.map((d) => !!d.model)).toEqual([true, false, false]);
+            expect(result.results.map((x) => x.visible)).toEqual([2, 5, 3]);
+        });
+
+        it('a design without liquid is not capped: every die rolls as the model', () => {
+            const r = headlessRoller();
+            const { batch } = rollToRest(r, [{ dice: 'd6', set: 'cube-design' }, { dice: 'd6', set: 'cube-design' }]);
+            expect(batch.dice.map((d) => !!d.model)).toEqual([true, true]);
+        });
+
         it('reset() fades the glass from its own opacity, the opaque parts from 1', async () => {
             const frames = [];
             vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
