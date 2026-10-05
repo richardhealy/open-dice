@@ -90,6 +90,28 @@ function poseFor(type) {
 // die paints its fallback; `key` stores the pixels under another name than `<set>-<type>`.
 // `target` paints that value on the face the pose turns up (the d20 pose shows face 0), so a
 // design's "20" decal can be viewed.
+/** Render the stage and keep its pixels under `key`; returns the PNG data URL. */
+function capture(key) {
+    roller.renderer.render(roller.scene, roller.camera);
+    // Output in device pixels: at devicePixelRatio 1 (the harness) this is exactly SIZE, so
+    // the baselines are unaffected; at 2 it shows whether the renderer draws at full density.
+    const px = Math.round(SIZE * (window.devicePixelRatio || 1));
+    const out = document.createElement('canvas');
+    out.width = out.height = px;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#2b2f36';
+    ctx.fillRect(0, 0, px, px);
+    ctx.drawImage(roller.renderer.domElement, 0, 0, px, px);
+    window.__renders[key] = ctx.getImageData(0, 0, px, px).data;
+    return out.toDataURL('image/png');
+}
+
+/** The fixture's standard lean (as poseFor) with `up` turned to +Y first. */
+function poseUp(up) {
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3().fromArray(up).normalize(), new THREE.Vector3(0, 1, 0));
+    return new THREE.Quaternion().setFromEuler(new THREE.Euler(0.42, 0.55, 0.0, 'XYZ')).multiply(q);
+}
+
 window.__renderDie = async (type, setId, half = 'units', { preload = true, key = null, target } = {}) => {
     if (setId !== 'classic' && typeof roller.preloadSets === 'function') {
         await roller.preloadSets(preload ? [setId] : []);
@@ -113,18 +135,7 @@ window.__renderDie = async (type, setId, half = 'units', { preload = true, key =
     die.mesh.position.set(0, 1.2, 0);
     current = die;
 
-    roller.renderer.render(roller.scene, roller.camera);
-    // Output in device pixels: at devicePixelRatio 1 (the harness) this is exactly SIZE, so
-    // the baselines are unaffected; at 2 it shows whether the renderer draws at full density.
-    const px = Math.round(SIZE * (window.devicePixelRatio || 1));
-    const out = document.createElement('canvas');
-    out.width = out.height = px;
-    const ctx = out.getContext('2d');
-    ctx.fillStyle = '#2b2f36';
-    ctx.fillRect(0, 0, px, px);
-    ctx.drawImage(roller.renderer.domElement, 0, 0, px, px);
-    window.__renders[key || `${setId}-${type}${half === 'tens' ? '-tens' : ''}`] = ctx.getImageData(0, 0, px, px).data;
-    return out.toDataURL('image/png');
+    return capture(key || `${setId}-${type}${half === 'tens' ? '-tens' : ''}`);
 };
 
 window.__loadBaseline = (url) => new Promise((resolve, reject) => {
@@ -272,4 +283,62 @@ window.__modelCheck = async () => {
     await roller.roll(config.map((c, i) => ({ ...c, rolled: [3, 5][i] })));
     const replay = roller.getCurrentResults().results.map((r) => ({ value: r.value, visible: r.visible }));
     return { ok: true, free, replay, models, labels, glowRestored, flask: flask.report.distribution, cube: cube.report.distribution };
+};
+
+// A liquid flask: the library's own d4 flask shape through the stub loader, with a draught.
+// Rendered still on its base and on a side; the draught must keep level, the far labels must
+// hide behind the near glass, the shader must compile (page errors are collected by the
+// runner), and a glow must restore the materials.
+window.__liquidCheck = async () => {
+    const shape = () => lib.dieShape('d4', { stopper: { radius: 0.1, height: 0.18 } });
+    lib.setModelLoader(async (src) => (src === 'shape:liquid-d4' ? shape() : null));
+    const flask = await lib.analyzeModelDie(shape(), { type: 'd4', throws: 120, seed: 2 });
+    if (!flask.ok) return { ok: false, reason: flask.reason };
+    // The model check before this one leaves its replayed dice wherever physics put them; a
+    // stray die in frame would make the captures differ from run to run. Clear the table.
+    await roller.reset();
+    if (current) { roller.scene.remove(current.mesh); current = null; }
+    // The neck, in the die frame: a little under the flask body's apex. dieShape seats the
+    // stopper 0.08 into the apex, so the stopper's side triangles (centroids from 0.02 under
+    // the apex upward) keep their paint, its hidden bottom disc joins the glass, and the apex
+    // tip that stays grey is inside the cork.
+    const body = shape().getObjectByName('body');
+    const t = flask.model.transform;
+    const q = new THREE.Quaternion().fromArray(t.rotation);
+    const offset = new THREE.Vector3().fromArray(t.position);
+    const pos = body.geometry.getAttribute('position');
+    const v = new THREE.Vector3();
+    let apex = -Infinity;
+    for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).multiplyScalar(t.scale).applyQuaternion(q).add(offset);
+        apex = Math.max(apex, v.y);
+    }
+    const neck = apex - 0.05 * t.scale;
+    registerDiceSet({
+        id: 'fixture-liquid', name: 'Fixture Liquid', family: 'glass',
+        body: { color: '#8A1020' }, numeral: { color: '#FFFFFF' }, swatch: ['#8A1020'],
+        models: { d4: { src: 'shape:liquid-d4', ...flask.model, numeral: { color: '#FFFFFF', outline: { color: '#5A0812', width: 0.1 } },
+            liquid: { color: '#B3122A', surfaceColor: '#FF8A96', glow: { color: '#FF3B4E', intensity: 0.3 }, level: 0.6, neck, glass: { color: '#FFE9EC', opacity: 0.35 } } } },
+    }, { replace: true });
+    await roller.preloadSets(['fixture-liquid']);
+    const up = (value) => flask.model.faces.find((f) => f.value === value).up;
+    const renders = {};
+    let die = null;
+    for (const [name, face] of [['base', 4], ['side', 1]]) {
+        if (current) roller.scene.remove(current.mesh);
+        die = createDie('d4', true, true, undefined, undefined, null, roller.scene, null, null, null, null, false, null, roller.decalRegistry, { set: 'fixture-liquid' });
+        die.mesh.quaternion.copy(poseUp(up(face)));
+        die.mesh.position.set(0, 1.2, 0);
+        current = die;
+        renders[name] = capture(`liquid-flask-${name}`);
+    }
+    const parts = [];
+    die.mesh.traverse((o) => { if (o.isMesh && !o.userData.label) parts.push(o.name); });
+    const materials = lib.dieMaterials(die).filter((m) => m.emissive);
+    const before = materials.map((m) => m.emissive.getHex());
+    roller.glow(die, { color: 0xff0000, duration: 120 });
+    roller._ensureAnimating();
+    await new Promise((r) => setTimeout(r, 600));
+    const glowRestored = materials.every((m, i) => m.emissive.getHex() === before[i]);
+    return { ok: true, renders, parts: parts.sort(), glowRestored };
 };

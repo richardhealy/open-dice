@@ -3,6 +3,7 @@
  * validator for a design's `models` entry. See README "Model dice".
  */
 import { buildHull } from './hull.js';
+import { shade } from '../sets/color.js';
 
 export const MODEL_DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
 
@@ -91,6 +92,46 @@ function numeralSpec(field, n) {
     return out;
 }
 
+const LIQUID_GLASS = Object.freeze({ color: '#FFFFFF', opacity: 0.35, roughness: 0.08 });
+
+/** A finite number within [min, max], or `fallback` when absent. */
+function bounded(field, v, min, max, fallback) {
+    if (v == null) return fallback;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < min || v > max) fail(field, `must be a number between ${min} and ${max}`);
+    return v;
+}
+
+/**
+ * The liquid inside a model (README "Model dice", "Liquid"): the draught's colours and glow,
+ * its fill level, the glass shell, the neck above which the model keeps its own meshes, and
+ * how far the surface sloshes. Null when absent.
+ */
+export function liquidSpec(field, l) {
+    if (l == null) return null;
+    if (!isObject(l)) fail(field, 'must be { color, surfaceColor, glow, level, thickness, glass, neck, slosh }');
+    const color = hex(`${field}.color`, l.color);
+    const surfaceColor = l.surfaceColor == null ? shade(color, 0.35) : hex(`${field}.surfaceColor`, l.surfaceColor);
+    let glow = null;
+    if (l.glow != null) {
+        if (!isObject(l.glow)) fail(`${field}.glow`, 'must be { color, intensity }');
+        glow = { color: hex(`${field}.glow.color`, l.glow.color), intensity: bounded(`${field}.glow.intensity`, l.glow.intensity, 0, 2, 0.3) };
+    }
+    const level = bounded(`${field}.level`, l.level, 0.05, 0.95, 0.6);
+    const thickness = bounded(`${field}.thickness`, l.thickness, 0.01, 0.3, 0.06);
+    let glass = { ...LIQUID_GLASS };
+    if (l.glass != null) {
+        if (!isObject(l.glass)) fail(`${field}.glass`, 'must be { color, opacity, roughness }');
+        glass = {
+            color: l.glass.color == null ? LIQUID_GLASS.color : hex(`${field}.glass.color`, l.glass.color),
+            opacity: bounded(`${field}.glass.opacity`, l.glass.opacity, 0.05, 0.95, LIQUID_GLASS.opacity),
+            roughness: bounded(`${field}.glass.roughness`, l.glass.roughness, 0, 1, LIQUID_GLASS.roughness),
+        };
+    }
+    const neck = l.neck == null ? null : bounded(`${field}.neck`, l.neck, -MAX_EXTENT, MAX_EXTENT, null);
+    const slosh = bounded(`${field}.slosh`, l.slosh, 0, 2, 1);
+    return { color, surfaceColor, glow, level, thickness, glass, neck, slosh };
+}
+
 function modelSpec(field, type, m) {
     if (!isObject(m)) fail(field, 'must be { src, hull, faces, labels }');
     if (typeof m.src !== 'string' || !m.src.trim()) fail(`${field}.src`, 'required');
@@ -136,7 +177,7 @@ function modelSpec(field, type, m) {
         return { value, position, normal, up, size: l.size };
     });
 
-    return { src: m.src, transform, hull, faces, labels, numeral: numeralSpec(`${field}.numeral`, m.numeral) };
+    return { src: m.src, transform, hull, faces, labels, numeral: numeralSpec(`${field}.numeral`, m.numeral), liquid: liquidSpec(`${field}.liquid`, m.liquid) };
 }
 
 /** `{ [dieType]: model }` from a design definition, validated, or null when absent. */

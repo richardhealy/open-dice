@@ -776,8 +776,10 @@ export class DiceRoller {
 
                 diceToFade.forEach(d => {
                     dieMaterials(d).forEach(m => {
+                        // Fade from the material's own opacity: glass (0.35) must not pop opaque first.
+                        if (m.userData.baseOpacity === undefined) m.userData.baseOpacity = m.opacity;
                         m.transparent = true;
-                        m.opacity = opacity;
+                        m.opacity = m.userData.baseOpacity * opacity;
                     });
                 });
 
@@ -876,8 +878,9 @@ export class DiceRoller {
     _animate(time) {
         if (!this.isAnimating) return;
 
+        let dt = 0;
         if (this.lastTime !== undefined) {
-            const dt = (time - this.lastTime) / 1000;
+            dt = (time - this.lastTime) / 1000;
             this.world.step(1 / 60, dt, 2);
         }
         this.lastTime = time;
@@ -885,6 +888,8 @@ export class DiceRoller {
         this.dice.forEach(d => {
             d.mesh.position.copy(d.body.position);
             d.mesh.quaternion.copy(d.body.quaternion);
+            // A model die's liquid sloshes with the body's change in velocity (models/liquid.js).
+            if (d.liquid) d.liquid.tick(d.body, dt);
         });
 
         for (const batch of this.diceBatches) {

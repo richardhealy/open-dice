@@ -34,3 +34,20 @@ export function boxScene(color = 0x8844aa) {
     scene.add(new THREE.Mesh(new THREE.BoxGeometry(2 * H, 2 * H, 2 * H), new THREE.MeshStandardMaterial({ color })));
     return scene;
 }
+
+/** The cube design with a draught inside: everything above y = 0.56 (the stopper) keeps its own look. */
+export function liquidCubeDesign(id = 'liquid-cube', src = 'flask.glb', liquid = {}) {
+    const design = cubeDesign(id, src);
+    design.models.d6 = { ...design.models.d6, liquid: { color: '#2255AA', neck: H + 0.01, ...liquid } };
+    return design;
+}
+
+/** The scene a loader would return for it: the box plus a small cylinder standing 0.02 above it (a stopper). */
+export function flaskScene() {
+    const scene = boxScene();
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8), new THREE.MeshStandardMaterial({ color: 0x8b5a2b }));
+    cap.name = 'stopper';
+    cap.position.y = H + 0.12;
+    scene.add(cap);
+    return scene;
+}

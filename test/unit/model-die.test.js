@@ -6,9 +6,10 @@ import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
 import { clearDiceSetCaches } from '../../src/sets/texture-cache.js';
 import { makeRecordingCanvas, callsNamed } from './helpers/canvas-stub.js';
 import { setModelLoader, loadModel, clearModelCache } from '../../src/models/loader.js';
-import { createModelDie, modelDieValue } from '../../src/models/model-die.js';
+import { createModelDie, modelDieValue, modelTemplate } from '../../src/models/model-die.js';
 import { createDie, getDieValue, dieMaterials } from '../../src/dice.js';
-import { cubeDesign, boxScene, CUBE_UPS } from './helpers/models.js';
+import { cubeDesign, boxScene, CUBE_UPS, liquidCubeDesign, flaskScene } from './helpers/models.js';
+import { labelGeometry } from '../../src/models/labels.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 /** Turn a die so the face with this up vector points up. */
@@ -252,5 +253,107 @@ describe('decals on model dice', () => {
         expect(drawn(a[6])).toEqual([skull]);
         expect(a[6].material.map).toBe(b[6].material.map);
         expect(a[6].material).not.toBe(b[6].material);
+    });
+});
+
+describe('model dice with a liquid', () => {
+    let set, restore, warn;
+    const parts = (die) => { const out = []; die.mesh.traverse((o) => { if (o.isMesh && !o.userData.label) out.push(o.name); }); return out.sort(); };
+    beforeEach(async () => {
+        restore = setCanvasFactories({ canvas: (size) => makeRecordingCanvas(size) });
+        clearDiceSetCaches();
+        clearModelCache();
+        warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        set = validateSet(liquidCubeDesign());
+        setModelLoader(async () => flaskScene());
+        await loadModel('flask.glb');
+    });
+    afterEach(() => { restore(); setModelLoader(null); warn.mockRestore(); });
+
+    it('keeps the stopper, draws the box as two glass shells with the draught inside, and labels on top', () => {
+        const die = createModelDie({ type: 'd6', model: set.models.d6, set, visible: true });
+        expect(parts(die)).toEqual(['liquid-body', 'liquid-shell-inner', 'liquid-shell-outer', 'stopper']);
+        const inner = die.mesh.getObjectByName('liquid-shell-inner');
+        const outer = die.mesh.getObjectByName('liquid-shell-outer');
+        const body = die.mesh.getObjectByName('liquid-body');
+        expect(inner.renderOrder).toBe(0);
+        expect(outer.renderOrder).toBe(1);
+        expect(inner.geometry).toBe(outer.geometry);
+        expect(inner.material).not.toBe(outer.material);
+        expect(inner.material.side).toBe(THREE.BackSide);
+        expect(outer.material.depthWrite).toBe(true);
+        expect(body.userData.liquid).toBe('body');
+        expect(body.material.userData.liquid).toBe(die.liquid.state.uniforms);
+        expect(die.liquid.mesh).toBe(body);
+        expect(typeof body.onBeforeRender).toBe('function');
+        for (const label of die.mesh.children.filter((c) => c.userData.label)) expect(label.renderOrder).toBe(2);
+        expect(die.mesh.children.filter((c) => c.userData.label)).toHaveLength(6);
+        const materials = dieMaterials(die).filter((m) => !m.map);        // the labels carry maps
+        expect(materials).toHaveLength(4);
+        expect(materials.filter((m) => m.transparent)).toHaveLength(2);
+    });
+
+    it('builds the liquid material per die and shares one program between dice', () => {
+        const a = createModelDie({ type: 'd6', model: set.models.d6, set, visible: true });
+        const b = createModelDie({ type: 'd6', model: set.models.d6, set, visible: true });
+        const template = modelTemplate(set.models.d6);
+        expect(a.liquid.mesh.material).not.toBe(template.getObjectByName('liquid-body').material);
+        expect(a.liquid.mesh.material).not.toBe(b.liquid.mesh.material);
+        expect(a.liquid.mesh.material.customProgramCacheKey()).toBe(b.liquid.mesh.material.customProgramCacheKey());
+        expect(a.liquid.state.uniforms).not.toBe(b.liquid.state.uniforms);
+        expect(a.liquid.state.slosh).not.toBe(b.liquid.state.slosh);
+        expect(a.liquid.state.cloud).toBe(b.liquid.state.cloud);          // the template's cloud, shared
+    });
+
+    it('levels the surface before a render, from the die pose', () => {
+        const die = createModelDie({ type: 'd6', model: set.models.d6, set, visible: true });
+        die.mesh.position.set(0, 2, 0);
+        restOn(die, CUBE_UPS[2]);                                            // a side up
+        die.mesh.updateMatrixWorld(true);
+        die.liquid.mesh.onBeforeRender();
+        expect(die.liquid.state.uniforms.uSurfaceHeight.value).toBeCloseTo(2 + 0.55 * 0.2, 1);   // level 0.6 of a cube: 0.1 above its middle
+        expect(die.liquid.state.uniforms.uSurfaceNormal.value.y).toBeCloseTo(1, 6);
+    });
+
+    it("feeds the roller's tick to the slosh", () => {
+        const die = createModelDie({ type: 'd6', model: set.models.d6, set, visible: true });
+        die.liquid.tick({ velocity: { x: 6, y: 0, z: 0 } }, 1 / 60);
+        die.liquid.tick({ velocity: { x: 0, y: 0, z: 0 } }, 1 / 60);
+        expect(die.liquid.state.slosh.tilt).toBeGreaterThan(0);
+    });
+
+    it('cuts labels from the stopper and the outer shell only, never from the draught or the inner shell', () => {
+        const plain = validateSet(cubeDesign('plain-cube', 'flask.glb'));
+        const template = modelTemplate(set.models.d6);
+        const plainTemplate = modelTemplate(plain.models.d6);
+        set.models.d6.labels.forEach((label, i) => {
+            const cut = labelGeometry(template, label);
+            const reference = labelGeometry(plainTemplate, plain.models.d6.labels[i]);
+            expect(cut.getAttribute('position').count).toBe(reference.getAttribute('position').count);
+        });
+    });
+
+    it('an invisible prediction die has no liquid', () => {
+        const die = createModelDie({ type: 'd6', model: set.models.d6, set, visible: false });
+        expect(die.liquid).toBeUndefined();
+        expect(die.mesh.children).toHaveLength(0);
+    });
+
+    it('a neck below the whole model gives a draught with no shell, and warns once', () => {
+        const low = validateSet(liquidCubeDesign('low-neck', 'flask.glb', { neck: -5 }));
+        const a = createModelDie({ type: 'd6', model: low.models.d6, set: low, visible: true });
+        const b = createModelDie({ type: 'd6', model: low.models.d6, set: low, visible: true });
+        expect(parts(a)).toEqual(['', 'liquid-body', 'stopper']);           // the box mesh has no name
+        expect(b.liquid).toBeDefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('nothing lies below its liquid neck');
+    });
+
+    it('a design without a liquid is untouched: one mesh, labels at order 2, no liquid', () => {
+        const plain = validateSet(cubeDesign('plain-cube', 'flask.glb'));
+        const die = createModelDie({ type: 'd6', model: plain.models.d6, set: plain, visible: true });
+        expect(parts(die)).toEqual(['', 'stopper']);
+        expect(die.liquid).toBeUndefined();
+        for (const label of die.mesh.children.filter((c) => c.userData.label)) expect(label.renderOrder).toBe(2);
     });
 });
