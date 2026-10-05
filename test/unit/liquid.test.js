@@ -127,6 +127,21 @@ describe('updateSurface', () => {
         expect(stateFor(0.25).uniforms.uSurfaceHeight.value).toBe(0);     // fresh uniforms untouched
     });
 
+    it('lags the vessel: a die that skids to a stop surges its draught forward', () => {
+        const die = new THREE.Group();
+        const mesh = new THREE.Mesh(body.geometry);
+        die.add(mesh);
+        die.updateMatrixWorld(true);
+        const slosh = createSlosh(1);
+        slosh.tick(at(6), DT);
+        slosh.tick(at(0), DT);                                               // velocity drops: the vessel brakes
+        const state = stateFor(0.5, slosh);
+        updateSurface(mesh, state);
+        const n = state.uniforms.uSurfaceNormal.value, c = state.uniforms.uSurfaceHeight.value;
+        const heightAt = (x) => (c - n.x * x) / n.y;                       // the plane's y at world x (z = 0)
+        expect(heightAt(1)).toBeGreaterThan(heightAt(-1));                  // higher ahead (+X), where the draught surged
+    });
+
     it('tilts the surface by the slosh and ripples with it', () => {
         const die = new THREE.Group();
         const mesh = new THREE.Mesh(body.geometry);

@@ -19,8 +19,10 @@ export const SLOSH = Object.freeze({
 });
 
 /**
- * The slosh of one die: `tick(body, dt)` each frame with the body's velocity. A still die
- * (never ticked, or ticked with no change in velocity) keeps the surface level.
+ * The slosh of one die: `tick(body, dt)` each frame with the body's velocity. The draught
+ * lags the vessel: an acceleration in +X piles it up at -X, and a die that brakes sends it
+ * surging forward. A still die (never ticked, or ticked with no change in velocity) keeps
+ * the surface level.
  */
 export function createSlosh(strength) {
     const state = { x: 0, z: 0, vx: 0, vz: 0, phase: 0, last: null };
@@ -33,8 +35,11 @@ export function createSlosh(strength) {
             const step = Math.min(dt, SLOSH.maxDt);
             const v = body.velocity;
             if (state.last) {
-                state.vx -= ((v.x - state.last.x) / step) * SLOSH.push * strength;
-                state.vz -= ((v.z - state.last.z) / step) * SLOSH.push * strength;
+                // The surface normal leans with the wobble (n = (x, 1, z)), so a positive x
+                // lowers the surface towards +X: pushing the wobble along the acceleration
+                // piles the draught up behind it, as a lagging liquid does.
+                state.vx += ((v.x - state.last.x) / step) * SLOSH.push * strength;
+                state.vz += ((v.z - state.last.z) / step) * SLOSH.push * strength;
             }
             state.last = { x: v.x, z: v.z };
             state.vx += (-SLOSH.stiffness * state.x - SLOSH.damping * state.vx) * step;

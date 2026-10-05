@@ -89,9 +89,12 @@ export function splitAtNeck(object, neck) {
 
 /**
  * The draught: the hull's points scaled towards the origin by `1 - thickness`. The nearest
- * face moves inward by `thickness` times the inradius, farther faces and the corners a little
- * more. Returns the geometry, its points, its face planes (`normal . p <= constant` inside)
- * and the outer hull's inradius.
+ * face moves inward by `thickness` times the inradius, farther faces and the corners
+ * proportionally more; the body stays similar to the hull, nothing rounds. It follows the
+ * physics hull, not the painted surface: a model whose surface sits deeper inside its hull
+ * than this inset needs a larger `thickness`, or the draught shows through the glass.
+ * Returns the geometry, its points, its face planes (`normal . p <= constant` inside) and
+ * the outer hull's inradius.
  */
 export function liquidBody(hull, thickness) {
     const inradius = Math.min(...hull.faces.map((f, i) => hull.normals[i].dot(hull.points[f[0]])));
