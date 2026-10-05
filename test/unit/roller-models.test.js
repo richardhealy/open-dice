@@ -7,10 +7,10 @@ import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
 import { clearDiceSetCaches } from '../../src/sets/texture-cache.js';
 import { makeRecordingCanvas } from './helpers/canvas-stub.js';
 import { setModelLoader, loadModel, clearModelCache } from '../../src/models/loader.js';
-import { getDieValue, dieMaterials } from '../../src/dice.js';
+import { getDieValue, dieMaterials, createDie } from '../../src/dice.js';
 import { glow } from '../../src/effects/glow.js';
 import { isBodySettled } from '../../src/physics-config.js';
-import { cubeDesign, boxScene } from './helpers/models.js';
+import { cubeDesign, boxScene, liquidCubeDesign, flaskScene } from './helpers/models.js';
 
 const proto = DiceRoller.prototype;
 
@@ -229,5 +229,61 @@ describe('effects and fades reach model materials', () => {
         await done;
         now.mockRestore();
         vi.unstubAllGlobals();
+    });
+
+    describe('with a liquid', () => {
+        let die;
+        beforeEach(async () => {
+            registerDiceSet(liquidCubeDesign());
+            setModelLoader(async (src) => (src === 'flask.glb' ? flaskScene() : boxScene()));
+            await loadModel('flask.glb');
+            die = createDie('d6', true, true, undefined, undefined, null, null, null, null, null, null, false, null, null, { set: 'liquid-cube' });
+            expect(die.liquid).toBeDefined();
+        });
+
+        it('_animate ticks each liquid with the frame time after syncing the mesh', () => {
+            const r = headlessRoller();
+            r.renderer = { render() {} };
+            r.isAnimating = true;
+            r._shouldIdle = () => true;
+            r.dice.push(die);
+            r.world.addBody(die.body);
+            die.liquid.tick = vi.fn();
+            r._animate(1000);
+            expect(die.liquid.tick).toHaveBeenCalledWith(die.body, 0);
+            r.isAnimating = true;
+            r._animate(1016);
+            expect(die.liquid.tick).toHaveBeenLastCalledWith(die.body, expect.closeTo(0.016, 3));
+            expect(die.mesh.position.x).toBe(die.body.position.x);
+        });
+
+        it('reset() fades the glass from its own opacity, the opaque parts from 1', async () => {
+            const frames = [];
+            vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
+            const now = vi.spyOn(performance, 'now');
+            now.mockReturnValue(0);
+            const r = headlessRoller();
+            r.dice.push(die);
+            r._ensureAnimating = () => {};
+            r.isAnimating = true;
+            const glass = die.mesh.getObjectByName('liquid-shell-outer').material;
+            const cork = die.mesh.getObjectByName('stopper').material;
+            const done = r.reset();
+            expect(glass.opacity).toBeCloseTo(0.35, 6);                       // the first frame, no time passed
+            expect(cork.opacity).toBeCloseTo(1, 6);
+            now.mockReturnValue(250);
+            frames.shift()();
+            expect(glass.opacity).toBeGreaterThan(0);
+            expect(glass.opacity).toBeLessThan(0.35);
+            expect(cork.opacity).toBeGreaterThan(0);
+            expect(cork.opacity).toBeLessThan(1);
+            expect(glass.opacity / cork.opacity).toBeCloseTo(0.35, 6);
+            now.mockReturnValue(600);
+            frames.shift()();
+            await done;
+            expect(glass.opacity).toBe(0);
+            now.mockRestore();
+            vi.unstubAllGlobals();
+        });
     });
 });
