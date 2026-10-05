@@ -57,7 +57,7 @@ models: {
 | `surfaceColor` | `color` mixed 35% towards white | `#rrggbb` | The liquid's top face, seen through the cut. |
 | `glow` | none | `{ color, intensity }`, intensity 0 to 2 | Emissive on the draught. |
 | `level` | `0.6` | 0.05 to 0.95 | Filled share of the liquid body's volume. |
-| `thickness` | `0.06` | 0 to 0.3 | The gap between the hull and the liquid body, as a share of the hull's inradius. |
+| `thickness` | `0.06` | 0.01 to 0.3 | The gap between the hull and the liquid body, as a share of the hull's inradius. |
 | `glass` | `{ color: '#FFFFFF', opacity: 0.35, roughness: 0.08 }` | opacity 0.05 to 0.95, roughness 0 to 1 | The shell's material. Each field may be given alone. |
 | `neck` | none | a number within 5 units | Die-frame height. Triangles whose centroid lies above it keep the model's own mesh and material. Without it the whole model becomes the shell. |
 | `slosh` | `1` | 0 to 2 | How far the surface swings with the throw. `0` never tilts. |
@@ -70,7 +70,7 @@ For the potion: the cork starts at GLB height 0.62; with the entry's transform (
 
 Built in `modelTemplate(model)` when the entry has `liquid`, cached per entry like the template itself.
 
-- **Split.** Every mesh under the placed scene is read with its world matrix (the die frame) applied. Triangles with centroid height above `neck` go to a "kept" geometry that keeps that mesh's material; the others go to the shell. A mesh wholly on one side keeps its own geometry object. Non-indexed copies carry position, normal and uv.
+- **Split.** Every mesh under the placed scene is read with its world matrix (the die frame) applied. Triangles with centroid height above `neck` are kept with their mesh's material; the others go to the shell. A mesh wholly above the neck is left untouched; one wholly below leaves the model and its triangles join the shell; one cut in two keeps its upper triangles as a new mesh baked into the die frame. Non-indexed copies carry position, normal and uv.
 - **Shell.** The shell geometry is drawn twice: an inner mesh (`BackSide`, no depth write, renderOrder 0) and an outer mesh (`FrontSide`, depth write, renderOrder 1). Both carry the glass material.
 - **Liquid body.** The hull's points scaled towards the origin by `1 - thickness`, as a `ConvexGeometry`. The nearest face moves inward by `thickness` times the inradius; farther faces and the corners a little more, which rounds the draught at the corners. `DoubleSide`, opaque.
 - **Sample cloud.** 1024 points inside the liquid body: rejection sampling in its bounding box against its face planes with a seeded generator, so a model gives the same cloud every time.
@@ -94,9 +94,9 @@ Per die, `createModelDie` returns `liquid: { mesh, tick(body, dt) }` beside `mes
 1. World up turned into the die frame by the inverse of the die's world rotation (the die group carries no scale).
 2. Heights of the cloud points along that axis; the surface height `h` is the `level` quantile (a selection, not a sort).
 3. The world surface normal `n` is world up tilted by the wobble: `normalize(up + x * X + z * Z)`. The surface passes through the point on the die's axis at height `h`: `uSurfaceHeight = dot(diePosition + up * h, n)`, `uSurfaceNormal = n`.
-4. Ripple: amplitude `|wobble| * 0.04 * slosh`, phase advancing with time, written to `uRipple`.
+4. Ripple: amplitude `|wobble| * 0.08`, phase advancing with time, written to `uRipple`.
 
-**Slosh**, in `tick(body, dt)` called by the roller after the mesh sync: the change in the body's velocity over the frame is an acceleration; its horizontal part pushes the wobble velocity the opposite way, scaled by `slosh`; a spring pulls the wobble back and damping bleeds it (stiffness about 40, damping about 6, tuned in the render harness so it settles within a second of landing); the tilt is capped at tan 20° times `slosh`. Without ticks (a still die, a preview, the cover) the wobble is zero and the surface is level.
+**Slosh**, in `tick(body, dt)` called by the roller after the mesh sync: the change in the body's velocity over the frame is an acceleration; its horizontal part pushes the wobble velocity the opposite way, scaled by `slosh`; a spring pulls the wobble back and damping bleeds it (stiffness about 40, damping about 6, tuned in the render harness so it settles within a second of landing); the tilt is capped at tan 20° times `slosh`. A frame longer than 0.05 s (a hidden tab shown again) is integrated as 0.05 s, so the spring never blows up. Without ticks (a still die, a preview, the cover) the wobble is zero and the surface is level.
 
 **The shader patch** on the liquid material, through `onBeforeCompile`. Every liquid material installs the same function text, so three r130 (which keys programs on that text) compiles one program; the uniforms are wired from `material.userData.liquid` so each die drives its own.
 
@@ -129,8 +129,8 @@ Unit, with vitest in Node (no WebGL):
 1. **Schema:** defaults filled in; `level: 0.96` fails naming `models.d4.liquid.level`; `neck: 9` fails; `glass: { opacity: 0.5 }` keeps the other glass defaults; `slosh: 0` kept; `liquid: null` resolves to null; the frozen entry carries the block.
 2. **Split:** a box scene with a stopper cylinder above `neck`: the kept geometry holds the stopper's triangles only and its material object; the shell holds the box's; `neck` absent puts everything in the shell; a mesh wholly above `neck` keeps its geometry object.
 3. **Liquid body:** every point of the inset body lies inside each hull plane by at least `thickness` times the inradius, within 1%.
-4. **Level solver:** the helpers' cube at level 0.5 gives a surface at mid-height for the identity and for quarter turns about each axis (within 0.02); at level 0.25 it gives a quarter of the height; the fixture flask on its base and on a side both put `round(level * N)` cloud points under the surface, and the two surface heights differ.
-5. **Slosh:** one impulse tilts the surface; with no further acceleration the wobble falls below 1e-3 within 90 ticks at 1/60 s; the tilt never exceeds the cap; `slosh: 0` never tilts; a die that is never ticked stays level.
+4. **Level solver:** the helpers' cube at level 0.5 gives a surface at mid-height for the identity and for quarter turns about each axis (within 0.02); at level 0.25 it gives a quarter of the height; a regular tetrahedron standing on a face holds half its draught below 20.6% of its height (the analytic `1 - 0.5^(1/3)`), the same for each of its four faces.
+5. **Slosh:** one impulse tilts the surface; with no further acceleration the wobble falls under 0.02 within 90 ticks at 1/60 s and under 1e-3 within 180; the tilt never exceeds the cap; `slosh: 0` never tilts; a 5 s frame is clamped and stays finite; a die that is never ticked stays level.
 6. **Shader patch:** on a fake shader object the patch inserts the discard and the back-face lines and wires the uniform objects of the die's state; two liquid materials give the same `customProgramCacheKey()`.
 7. **Materials:** `dieMaterials(die)` lists the liquid, the glass and the kept materials; the liquid material is not the template's; `glow` restores the draught's emissive (existing model-die test extended).
 8. **Fade:** a die whose glass has opacity 0.35 starts the fade at 0.35 and ends at 0; an opaque material starts at 1.
