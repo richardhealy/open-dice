@@ -4,6 +4,7 @@ import { buildHull, hullVolume, hullCentroid, hullShape, simplifyHull } from './
 import { MODEL_DIE_TYPES, MODEL_DIE_VALUES, CLASSIC_RADIUS, CORNER_READ, modelsSpec } from './spec.js';
 import { D4_GEOMETRY, D6_GEOMETRY, D8_GEOMETRY, D10_GEOMETRY, D12_GEOMETRY, D20_GEOMETRY } from '../geometry.js';
 import { GRAVITY_Y, SOLVER_ITERATIONS, CONTACT, DIE_DAMPING, FRUSTUM_SIZE, WALL_THICKNESS, WALL_HEIGHT, applyThrow, isDieSettled, trackRestSteps } from '../physics-config.js';
+import { prng } from './prng.js';
 
 /**
  * The model studio: turn any loaded 3D model into a design's `models` entry by throwing its
@@ -39,18 +40,6 @@ export function classicVolume(type) {
     const r = CLASSIC_RADIUS[type];
     const points = CLASSIC_GEOMETRY[type].vertices.map((v) => new THREE.Vector3().fromArray(v).normalize().multiplyScalar(r));
     return hullVolume(buildHull(points));
-}
-
-/** A small, fast, seedable PRNG (mulberry32) so a studio run is reproducible. */
-function prng(seed) {
-    let a = seed >>> 0;
-    return () => {
-        a = (a + 0x6d2b79f5) >>> 0;
-        let t = a;
-        t = Math.imul(t ^ (t >>> 15), t | 1);
-        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
 }
 
 /** A throw seed shaped like the roller's own. */
