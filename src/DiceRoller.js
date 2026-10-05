@@ -5,6 +5,7 @@ import { loadModel, loadSetModels, isModelSettled } from './models/loader.js';
 import { DecalRegistry } from './decal-registry.js';
 import { SoundManager } from './sound-manager.js';
 import { glow, scalePulse, haloRing, runEffectsRules } from './effects/index.js';
+import { modelDiceAllowance } from './models/throw-allowance.js';
 import { resolveSet, CLASSIC } from './sets/index.js';
 import { prepareDiceSets } from './sets/prepare.js';
 import { collectSetImages } from './sets/face-materials.js';
@@ -538,7 +539,9 @@ export class DiceRoller {
     _spawnBatch(diceConfig, type, closestIndexes, seeds, onResolve) {
         const batchDice = [];
         let cidx = 0;
-        diceConfig.forEach((diceRoll) => {
+        // One liquid flask per design and type in a throw; the prediction made the same choice.
+        const allowed = modelDiceAllowance(diceConfig, (d) => this._setFor(d));
+        diceConfig.forEach((diceRoll, k) => {
             const repeatCount = diceRoll.dice === 'd100' ? 2 : 1;
             for (let i = 0; i < repeatCount; i++) {
                 const closestIndex = closestIndexes[cidx];
@@ -548,7 +551,7 @@ export class DiceRoller {
                     this.diceMaterial, this.scene, this.world,
                     diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
                     diceRoll.isSecret, diceRoll.decals, this.decalRegistry,
-                    { set: this._setFor(diceRoll) }
+                    { set: this._setFor(diceRoll), model: allowed[k] }
                 );
                 if (!die) { cidx++; continue; }
 
@@ -606,10 +609,13 @@ export class DiceRoller {
 
         const dice = [];
         const seeds = [];
+        // One liquid flask per design and type in a throw (models/throw-allowance.js); the
+        // visible dice are spawned with the same choice, so each predicts with its own body.
+        const allowed = modelDiceAllowance(diceConfig, (d) => this._setFor(d));
         // Whatever happens below, prediction bodies leave the world and existing dice go back
         // where they were: a die that fails to build must not leave an invisible body behind.
         try {
-            diceConfig.forEach((diceRoll) => {
+            diceConfig.forEach((diceRoll, k) => {
                 const repeatCount = diceRoll.dice === 'd100' ? 2 : 1;
                 for (let i = 0; i < repeatCount; i++) {
                     // Spawn into this.world without adding to the scene — these
@@ -622,7 +628,7 @@ export class DiceRoller {
                         this.diceMaterial, null, this.world,
                         diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
                         diceRoll.isSecret, null, null,
-                        { set: this._setFor(diceRoll) }
+                        { set: this._setFor(diceRoll), model: allowed[k] }
                     );
                     const seed = this._generateRandomSeed();
                     seeds.push(seed);

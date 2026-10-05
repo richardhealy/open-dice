@@ -470,6 +470,8 @@ models: { d4: { src, hull, faces, labels, ...,
 
 The draught is cut by a shader in the die's own material (the glass has no refraction; it shows the scene's reflections). `glow` and `reset()` reach the draught and the glass like any material; `dieMaterials(die)` lists them. Labels are cut from the kept meshes and the outer glass only.
 
+**One flask per throw.** A liquid model die is the costliest die on the table (its hull in the physics, its glass and draught in the render), so in one `roll()` only the first die of each design and type that has a liquid model rolls as the model; the other dice of that type roll as the design's procedural die, with the look of the rest of its set. The choice follows the order of the throw, so a replay with `rolled` makes it too. Designs without liquid are not capped.
+
 ## 🔊 Sounds
 
 Pass an array of audio URLs and the engine plays a random one per dice collision, with volume scaled to impact velocity. WAV and OGG both work.
@@ -726,6 +728,11 @@ npm run build
 ---
 
 ## 📝 Changelog
+
+### [1.11.0] - 2026-10-05
+
+- 🧪 One flask per throw: in one `roll()` only the first die of each design and type that has a liquid model rolls as the model; the others roll as the design's procedural die. Ten potions used to mean ten 48-point hulls in the physics (a freeze of a quarter second to a second and a half before the first frame) and ten glass draughts in the render. Designs without liquid are not capped.
+- `createDie(…, { set, model: false })` asks for a design's procedural die although it has a model for that type.
 
 ### [1.10.0] - 2026-10-05
 
