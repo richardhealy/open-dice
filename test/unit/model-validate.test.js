@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { validateSet } from '../../src/sets/validate.js';
 import { MODEL_DIE_TYPES, MODEL_DIE_VALUES } from '../../src/models/spec.js';
+import { shade } from '../../src/sets/color.js';
 
 const PREFIX = 'open-dice-dnd: invalid dice set — ';
 const TETRA = [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, -1, -1]];
@@ -114,5 +115,50 @@ describe('models in a design', () => {
         expect(ok.models.d4.numeral).toEqual({ color: '#FFFFFF', outline: { color: '#4A0A0A', width: 0.08 } });
         expect(failing({ d4: d4Model({ transform: { scale: 0 } }) })).toMatch(/^models\.d4\.transform\.scale: must be a positive number/);
         expect(failing({ d4: d4Model({ transform: { rotation: [0, 0, 0, 0] } }) })).toMatch(/^models\.d4\.transform\.rotation: must be a non-zero quaternion/);
+    });
+});
+
+describe('liquid in a model', () => {
+    const liquid = (patch = {}) => ({ color: '#B3122A', ...patch });
+    const withLiquid = (l) => validateSet({ ...base(), models: { d4: d4Model({ liquid: l }) } }).models.d4.liquid;
+
+    it('is optional, fills its defaults and is frozen', () => {
+        expect(validateSet({ ...base(), models: { d4: d4Model() } }).models.d4.liquid).toBeNull();
+        expect(withLiquid(null)).toBeNull();
+        const l = withLiquid(liquid());
+        expect(l).toEqual({
+            color: '#B3122A', surfaceColor: shade('#B3122A', 0.35), glow: null, level: 0.6, thickness: 0.06,
+            glass: { color: '#FFFFFF', opacity: 0.35, roughness: 0.08 }, neck: null, slosh: 1,
+        });
+        expect(Object.isFrozen(l)).toBe(true);
+        expect(Object.isFrozen(l.glass)).toBe(true);
+    });
+
+    it('keeps what is given, one glass field at a time', () => {
+        const l = withLiquid(liquid({
+            surfaceColor: '#FF8A96', glow: { color: '#FF3B4E', intensity: 0.3 }, level: 0.5, thickness: 0.1,
+            glass: { opacity: 0.5 }, neck: 0.83, slosh: 0,
+        }));
+        expect(l.surfaceColor).toBe('#FF8A96');
+        expect(l.glow).toEqual({ color: '#FF3B4E', intensity: 0.3 });
+        expect(l.level).toBe(0.5);
+        expect(l.thickness).toBe(0.1);
+        expect(l.glass).toEqual({ color: '#FFFFFF', opacity: 0.5, roughness: 0.08 });
+        expect(l.neck).toBe(0.83);
+        expect(l.slosh).toBe(0);
+        expect(withLiquid(liquid({ glow: { color: '#FF3B4E' } })).glow.intensity).toBe(0.3);
+    });
+
+    it('names the field that is wrong', () => {
+        const bad = (l) => failing({ d4: d4Model({ liquid: l }) });
+        expect(bad('red')).toBe('models.d4.liquid: must be { color, surfaceColor, glow, level, thickness, glass, neck, slosh }');
+        expect(bad({ level: 0.5 })).toBe('models.d4.liquid.color: must be a #rrggbb colour');
+        expect(bad(liquid({ level: 0.96 }))).toBe('models.d4.liquid.level: must be a number between 0.05 and 0.95');
+        expect(bad(liquid({ thickness: 0 }))).toBe('models.d4.liquid.thickness: must be a number between 0.01 and 0.3');
+        expect(bad(liquid({ neck: 9 }))).toBe('models.d4.liquid.neck: must be a number between -5 and 5');
+        expect(bad(liquid({ slosh: 3 }))).toBe('models.d4.liquid.slosh: must be a number between 0 and 2');
+        expect(bad(liquid({ glass: 'clear' }))).toBe('models.d4.liquid.glass: must be { color, opacity, roughness }');
+        expect(bad(liquid({ glass: { opacity: 1 } }))).toBe('models.d4.liquid.glass.opacity: must be a number between 0.05 and 0.95');
+        expect(bad(liquid({ glow: { color: 'pink' } }))).toBe('models.d4.liquid.glow.color: must be a #rrggbb colour');
     });
 });
