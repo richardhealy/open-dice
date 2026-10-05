@@ -729,6 +729,10 @@ npm run build
 
 ## 📝 Changelog
 
+### [1.11.1] - 2026-10-05
+
+- A d4 thrown without `rolled` (its landing decides) painted "undefined" on the corner the prediction found, on every face that meets there. It now keeps its numbers, as every other die type already did. Hosts that throw physics-decided d4s (the dice beyond a design's one liquid flask, say) see the fix with no change on their side.
+
 ### [1.11.0] - 2026-10-05
 
 - 🧪 One flask per throw: in one `roll()` only the first die of each design and type that has a liquid model rolls as the model; the others roll as the design's procedural die. Ten potions used to mean ten 48-point hulls in the physics (a freeze of a quarter second to a second and a half before the first frame) and ten glass draughts in the render. Designs without liquid are not capped.

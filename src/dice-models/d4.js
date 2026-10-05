@@ -19,11 +19,15 @@ export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 
         [[], [0, 0, 0], [4, 2, 3], [1, 4, 3], [4, 1, 2], [1, 3, 2]]
     ];
 
+    // A replay swaps the predicted landing value with the target, as every other die does. A
+    // throw without a target (physics-decided) keeps its numbers: swapping then painted
+    // "undefined" on the corner the prediction found.
+    const swap = targetNumber != null && foundClosestIndex != null;
     const faceTexts = d4FaceTexts[0].map(subArray =>
       subArray.map(n => {
         if (isSecret && n !== 0) return '?';
-        if (n === foundClosestIndex) return targetNumber;
-        if (n === targetNumber) return foundClosestIndex;
+        if (swap && n === foundClosestIndex) return targetNumber;
+        if (swap && n === targetNumber) return foundClosestIndex;
         return n;
       })
     );

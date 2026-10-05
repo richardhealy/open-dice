@@ -49,6 +49,33 @@ describe('createDie with dice sets', () => {
         expect(painted).toContain('40');
     });
 
+    it('a die thrown without a target paints its own numbers, whatever face the prediction found', () => {
+        // A physics-decided throw (no `rolled`) still passes the predicted landing face. Every die
+        // type must leave its numbers alone then; the d4 used to paint "undefined" on that corner.
+        for (const type of TYPES) {
+            for (const set of [undefined, GEM]) {
+                canvases.length = 0;
+                createDie(type, true, true, undefined, 2, null, null, null, null, null, null, false, null, null, set ? { set } : {});
+                const painted = canvases.flatMap((c) => c.calls.filter((x) => x.name === 'fillText').map((x) => String(x.args[0])));
+                expect(painted.filter((t) => t === 'undefined' || t === 'null' || t === 'NaN'), `${type} ${set ? 'with a set' : 'classic'}`).toEqual([]);
+            }
+        }
+    });
+
+    it('a d4 without a target paints exactly what a d4 with no prediction paints', () => {
+        const paintedCounts = (args) => {
+            canvases.length = 0;
+            clearDiceSetCaches();
+            createDie('d4', true, true, ...args, null, null, null, null, null, null, false, null, null, { set: GEM });
+            const counts = {};
+            for (const c of canvases) for (const x of c.calls) if (x.name === 'fillText') counts[String(x.args[0])] = (counts[String(x.args[0])] || 0) + 1;
+            return counts;
+        };
+        const plain = paintedCounts([undefined, undefined]);
+        expect(Object.keys(plain).sort()).toEqual(['0', '1', '2', '3', '4']);
+        expect(paintedCounts([undefined, 2])).toEqual(plain);
+    });
+
     it('invisible dice carry placeholder materials and paint nothing', () => {
         const die = createDie('d20', false, true, 18, null, null, null, null, null, null, null, false, null, null, { set: GEM });
         expect(die.mesh.visible).toBe(false);
