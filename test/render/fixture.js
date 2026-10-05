@@ -294,6 +294,10 @@ window.__liquidCheck = async () => {
     lib.setModelLoader(async (src) => (src === 'shape:liquid-d4' ? shape() : null));
     const flask = await lib.analyzeModelDie(shape(), { type: 'd4', throws: 120, seed: 2 });
     if (!flask.ok) return { ok: false, reason: flask.reason };
+    // The model check before this one leaves its replayed dice wherever physics put them; a
+    // stray die in frame would make the captures differ from run to run. Clear the table.
+    await roller.reset();
+    if (current) { roller.scene.remove(current.mesh); current = null; }
     // The neck, in the die frame: a little under the flask body's apex. dieShape seats the
     // stopper 0.08 into the apex, so the stopper's side triangles (centroids from 0.02 under
     // the apex upward) keep their paint, its hidden bottom disc joins the glass, and the apex
