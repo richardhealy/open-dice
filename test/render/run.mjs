@@ -21,6 +21,7 @@ const TYPES = ['d20', 'd20-20up', 'd6', 'd12', 'd10', 'd100', 'd100-tens'];     
 const split = (type) => (type.endsWith('-tens') ? [type.slice(0, -5), 'tens', undefined]
     : type.endsWith('-20up') ? [type.slice(0, -5), 'units', 20] : [type, 'units', undefined]);
 const CLASSIC_TOLERANCE = 0.005;
+const LIQUID_TOLERANCE = 0.01;   // the glass blends many layers; 1% of pixels may drift between runs
 const SET_MIN_DIFF = 0.05;
 const IMAGE_MIN_DIFF = 0.01;   // a set's render once its images load vs its first paint without them
 
@@ -186,6 +187,35 @@ try {
         console.log(`${mok ? 'PASS' : 'FAIL'} model dice (${label}): free roll ${JSON.stringify(m.free)}, replay ${JSON.stringify(m.replay)}, labels ${JSON.stringify(m.labels)}, glow restored ${m.glowRestored}`);
         if (!m.ok) console.log(`  ${m.reason}`);
         if (!mok) failures++;
+
+        // Liquid: the flask keeps its draught level in two poses, the shader compiles, glow restores,
+        // and chromium's renders match the baselines (written on the first run or with --update-baseline).
+        const lq = await pg.evaluate(() => window.__liquidCheck());
+        let lok = lq.ok && lq.glowRestored && JSON.stringify(lq.parts) === JSON.stringify(['body', 'liquid-body', 'liquid-shell-inner', 'liquid-shell-outer', 'stopper']);   // 'body' = the flask's apex tip kept above the neck, inside the cork
+        if (lq.ok) {
+            for (const name of ['base', 'side']) savePng(lq.renders[name], resolve(outDir, `liquid-flask-${name}-${label}.png`));
+            const d = await pg.evaluate(([a, b]) => window.__diff(a, b), ['liquid-flask-base', 'liquid-flask-side']);
+            lok = lok && d >= IMAGE_MIN_DIFF;
+            console.log(`${lok ? 'PASS' : 'FAIL'} liquid flask (${label}): parts ${JSON.stringify(lq.parts)}, base vs side ${(d * 100).toFixed(1)}% (needs >= ${(IMAGE_MIN_DIFF * 100).toFixed(0)}%), glow restored ${lq.glowRestored}`);
+            if (label === 'chromium') {
+                for (const name of ['base', 'side']) {
+                    const baselinePath = resolve(baselineDir, `liquid-flask-${name}.png`);
+                    if (updateBaseline || !existsSync(baselinePath)) {
+                        copyFileSync(resolve(outDir, `liquid-flask-${name}-${label}.png`), baselinePath);
+                        console.log(`baseline written: ${baselinePath}`);
+                        continue;
+                    }
+                    await pg.evaluate((url) => window.__loadBaseline(url), `/baseline/liquid-flask-${name}.png?${Date.now()}`);
+                    const db = await pg.evaluate((key) => window.__diff(key, 'baseline'), `liquid-flask-${name}`);
+                    const bok = db <= LIQUID_TOLERANCE;
+                    console.log(`${bok ? 'PASS' : 'FAIL'} liquid-flask-${name} vs baseline: ${(db * 100).toFixed(3)}% differing (limit ${(LIQUID_TOLERANCE * 100).toFixed(1)}%)`);
+                    if (!bok) failures++;
+                }
+            }
+        } else {
+            console.log(`FAIL liquid flask (${label}): ${lq.reason}`);
+        }
+        if (!lok) failures++;
     };
     await probeIn('chromium', page);
     {
