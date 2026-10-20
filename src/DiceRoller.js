@@ -20,6 +20,14 @@ import { predict, warmPrediction } from './prediction.js';
 
 const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
 
+/** Resolves in the browser's next idle period (requestIdleCallback), or after a zero timeout without it. */
+function whenIdle() {
+    return new Promise((resolve) => {
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(() => resolve(), { timeout: 1000 });
+        else setTimeout(resolve, 0);
+    });
+}
+
 // Collisions below this impact speed are too quiet to be audible without distortion.
 // Above ~12 the cap kicks in.
 const COLLIDE_MIN_IMPACT = 1.5;
@@ -448,6 +456,8 @@ export class DiceRoller {
      * environment map, loads every image the listed sets reference (body, normal and
      * decoration images) and paints every face of every die type for them, so the first
      * roll does no painting and never shows an image's fallback. Optional; rolls work without it.
+     * Only the listed sets are loaded. The painting runs one die type at a time in idle
+     * time (requestIdleCallback, else a timeout), so preloading never holds up the page.
      * @param {string[]} ids
      */
     async preloadSets(ids = []) {
@@ -460,6 +470,8 @@ export class DiceRoller {
             for (const type of DIE_TYPES) {
                 const halves = type === 'd100' ? [true, false] : [true];
                 for (const isFirst of halves) {
+                    await whenIdle();
+                    if (this._destroyed) return;
                     const die = createDie(type, true, isFirst, undefined, undefined, this.diceMaterial, null, null,
                         null, null, null, false, null, this.decalRegistry, { set });
                     dieMaterials(die).forEach((m) => m.dispose());
