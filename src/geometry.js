@@ -157,6 +157,23 @@ export function getChamferGeometry(vectors, faces, chamfer) {
     return { vectors: chamfer_vectors, faces: chamfer_faces };
 }
 
+const sharedGeometries = new Map();
+
+/**
+ * One geometry per die shape, built on first use and shared by every die of that shape
+ * (visible dice and prediction bodies alike). Dice never change their geometry, so it is
+ * uploaded to the GPU once and never disposed; `userData.shared` marks it for disposal code.
+ */
+export function sharedGeometry(key, build) {
+    let geometry = sharedGeometries.get(key);
+    if (!geometry) {
+        geometry = build();
+        geometry.userData.shared = true;
+        sharedGeometries.set(key, geometry);
+    }
+    return geometry;
+}
+
 export function makeGeometry(vertices, faces, radius, tab, af) {
     let geom = new THREE.BufferGeometry();
 

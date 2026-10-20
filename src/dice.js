@@ -32,8 +32,9 @@ export function createDie(type, visible = true, isFirst = true, targetNumber, fo
     const targetScene = customScene;
     const targetWorld = customWorld;
     // Dice set (id or resolved definition) and whether the mesh will ever be rendered. Hidden
-    // prediction dice get placeholder materials instead of painted textures.
-    const meshOptions = { set: options.set, visible };
+    // prediction dice get placeholder materials instead of painted textures. A roller passes its
+    // classic texture cache (classic-textures.js) so its classic dice share face textures.
+    const meshOptions = { set: options.set, visible, classicTextures: options.classicTextures };
     // A design's own decals (its d20 "20" mark, say) join the die's decals; the die's own win.
     if (options.set) decals = setDecalsFor(resolveSet(options.set), type, decals);
 

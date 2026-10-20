@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { D12_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
+import { D12_GEOMETRY, getChamferGeometry, makeGeometry, sharedGeometry } from '../geometry.js';
 import { buildFaceMaterials } from '../sets/face-materials.js';
 
 export function createD12Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#f39c12', isSecret = false, decals = null, decalRegistry = null, options = {}) {
@@ -8,11 +8,14 @@ export function createD12Mesh(size, targetNumber, foundClosestIndex, diceColor =
     const tab = 0.2;
     const af = -Math.PI / 4 / 2;
 
-    const vectors = D12_GEOMETRY.vertices.map(v => new THREE.Vector3().fromArray(v).normalize());
+    // Every d12 shares one geometry (geometry.js sharedGeometry); only its materials are its own.
+    const geometry = sharedGeometry(`d12:${size}`, () => {
+        const vectors = D12_GEOMETRY.vertices.map(v => new THREE.Vector3().fromArray(v).normalize());
 
-    const chamferGeometry = getChamferGeometry(vectors, D12_GEOMETRY.faces, 0.968);
+        const chamferGeometry = getChamferGeometry(vectors, D12_GEOMETRY.faces, 0.968);
 
-    const geometry = makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
+        return makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
+    });
 
 
     const faceValues = [' ', '0', '1', '2', '3', '4', '5', '6', '7', '8',
@@ -41,6 +44,7 @@ export function createD12Mesh(size, targetNumber, foundClosestIndex, diceColor =
         decals,
         decalRegistry,
         set: options.set,
+        classicTextures: options.classicTextures,
         visible: options.visible !== false,
     });
 

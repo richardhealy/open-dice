@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as THREE from 'three';
 import { DiceRoller } from '../../src/DiceRoller.js';
+import { ClassicTextureCache } from '../../src/classic-textures.js';
 import { DecalRegistry } from '../../src/decal-registry.js';
 import { registerDiceSet, _resetRegistryForTests } from '../../src/sets/index.js';
 import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
@@ -23,15 +24,17 @@ function headlessRoller() {
         decalRegistry: new DecalRegistry(), soundManager: { sounds: [], play() {} },
         up: new THREE.Vector3(0, 1, 0), scene: new THREE.Scene(),
         _setAssetsReady: true, _rollGeneration: 0, _pendingSetRolls: 0, _animationHolds: 0, _destroyed: false,
+        _pendingPredictions: 0, _predictionQueue: Promise.resolve(), _tableEpoch: 0, _replay: null, _fadingDice: [],
+        _classicTextures: new ClassicTextureCache(), _retiredTextures: [],
     });
     r._initPhysics();
     return r;
 }
 
-/** Spawn one predicted batch and step it to rest the way the animation loop does. */
-function rollToRest(r, config) {
-    const { closestIndexes, seeds } = r._preSimulateInLiveWorld(config);
-    const batch = r._spawnBatch(config, 'main', closestIndexes, seeds, () => {});
+/** Spawn one predicted batch and step it to rest the way the animation loop does (the replay rides on the steps). */
+async function rollToRest(r, config) {
+    const prediction = await r._predict(config);
+    const batch = r._spawnBatch(config, 'main', prediction, () => {});
     for (let step = 0; step < 5000; step++) {
         r.world.step(1 / 60);
         if (step > 60 && batch.dice.every((d) => r._isBodySettled(d.body))) break;
@@ -53,10 +56,10 @@ describe('model dice in the roller', () => {
     });
     afterEach(() => { restore(); setModelLoader(null); });
 
-    it('without a target, reports the face the model physically lands on', () => {
+    it('without a target, reports the face the model physically lands on', async () => {
         for (let i = 0; i < 6; i++) {
             const r = headlessRoller();
-            const { batch, result } = rollToRest(r, [{ dice: 'd6', set: 'cube-design' }]);
+            const { batch, result } = await rollToRest(r, [{ dice: 'd6', set: 'cube-design' }]);
             const die = batch.dice[0];
             expect(die.model).toBeTruthy();
             const landed = getDieValue(die, r.up)[0];
@@ -68,18 +71,18 @@ describe('model dice in the roller', () => {
         }
     });
 
-    it('with a target (a replay), the model lands showing the target', () => {
+    it('with a target (a replay), the model lands showing the target', async () => {
         for (const target of [1, 4, 6]) {
             const r = headlessRoller();
-            const { result } = rollToRest(r, [{ dice: 'd6', set: 'cube-design', rolled: target }]);
+            const { result } = await rollToRest(r, [{ dice: 'd6', set: 'cube-design', rolled: target }]);
             expect(result.results[0].visible).toBe(target);
             expect(result.results[0].value).toBe(target);
         }
     });
 
-    it('mixes model dice with procedural dice of the same design', () => {
+    it('mixes model dice with procedural dice of the same design', async () => {
         const r = headlessRoller();
-        const { batch, result } = rollToRest(r, [{ dice: 'd6', set: 'cube-design' }, { dice: 'd8', set: 'cube-design', rolled: 7 }]);
+        const { batch, result } = await rollToRest(r, [{ dice: 'd6', set: 'cube-design' }, { dice: 'd8', set: 'cube-design', rolled: 7 }]);
         expect(batch.dice[0].model).toBeTruthy();
         expect(batch.dice[1].model).toBeUndefined();
         expect(result.results[1].visible).toBe(7);
@@ -98,10 +101,11 @@ describe('a model die rests only once it has stayed still', () => {
     });
     afterEach(() => { restore(); setModelLoader(null); });
 
-    it('counts as settled after ten still physics steps; a classic die after one', () => {
+    it('counts as settled after ten still physics steps; a classic die after one', async () => {
         const r = headlessRoller();
-        const { closestIndexes, seeds } = r._preSimulateInLiveWorld([{ dice: 'd6', set: 'cube-design' }, { dice: 'd6' }]);
-        const [model, classic] = r._spawnBatch([{ dice: 'd6', set: 'cube-design' }, { dice: 'd6' }], 'main', closestIndexes, seeds, () => {}).dice;
+        const prediction = await r._predict([{ dice: 'd6', set: 'cube-design' }, { dice: 'd6' }]);
+        const [model, classic] = r._spawnBatch([{ dice: 'd6', set: 'cube-design' }, { dice: 'd6' }], 'main', prediction, () => {}).dice;
+        r._finishReplay();   // simulate these two live from the poses set below
         for (const d of [model, classic]) {
             d.body.position.set(d === model ? -3 : 3, d === model ? 0.55 : 0.5, 0); // resting on the floor
             d.body.quaternion.set(0, 0, 0, 1);
@@ -139,7 +143,7 @@ describe('a roll whose die cannot be built leaves the table as it was', () => {
         // A hand-built (unvalidated) design object: resolveSet passes objects through.
         const broken = { id: 'broken', name: 'Broken', family: 'glass', body: { color: '#000000' }, numeral: { color: '#FFFFFF' }, swatch: ['#000000'],
             models: { d6: { src: 'flat.glb', transform: { scale: 1, position: [0, 0, 0], rotation: [0, 0, 0, 1] }, hull: [[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]], faces: [], labels: [], numeral: null } } };
-        expect(() => r._preSimulateInLiveWorld([{ dice: 'd20' }, { dice: 'd6', set: broken }])).toThrow();
+        expect(() => r._predict([{ dice: 'd20' }, { dice: 'd6', set: broken }])).toThrow();
         expect(r.world.bodies.length).toBe(before);
     });
 });
@@ -188,7 +192,7 @@ describe('effects and fades reach model materials', () => {
         setModelLoader(async () => boxScene());
         await loadModel('cube.glb');
         const r = headlessRoller();
-        die = rollToRest(r, [{ dice: 'd6', set: 'cube-design' }]).batch.dice[0];
+        die = (await rollToRest(r, [{ dice: 'd6', set: 'cube-design' }])).batch.dice[0];
     });
     afterEach(() => { restore(); setModelLoader(null); vi.useRealTimers(); });
 
@@ -257,9 +261,9 @@ describe('effects and fades reach model materials', () => {
             expect(die.mesh.position.x).toBe(die.body.position.x);
         });
 
-        it('throws one flask per design and type; the other dice roll as the design\'s procedural die', () => {
+        it('throws one flask per design and type; the other dice roll as the design\'s procedural die', async () => {
             const r = headlessRoller();
-            const { batch } = rollToRest(r, [{ dice: 'd6', set: 'liquid-cube' }, { dice: 'd6', set: 'liquid-cube' }, { dice: 'd6', set: 'liquid-cube' }]);
+            const { batch } = await rollToRest(r, [{ dice: 'd6', set: 'liquid-cube' }, { dice: 'd6', set: 'liquid-cube' }, { dice: 'd6', set: 'liquid-cube' }]);
             expect(batch.dice.map((d) => !!d.model)).toEqual([true, false, false]);
             expect(batch.dice.map((d) => !!d.liquid)).toEqual([true, false, false]);
             // The procedural dice are ordinary meshes on classic bodies, not model bodies on the hull.
@@ -271,16 +275,16 @@ describe('effects and fades reach model materials', () => {
             }
         });
 
-        it('a replay shows its values on the flask and on the procedural dice alike', () => {
+        it('a replay shows its values on the flask and on the procedural dice alike', async () => {
             const r = headlessRoller();
-            const { batch, result } = rollToRest(r, [{ dice: 'd6', set: 'liquid-cube', rolled: 2 }, { dice: 'd6', set: 'liquid-cube', rolled: 5 }, { dice: 'd6', set: 'liquid-cube', rolled: 3 }]);
+            const { batch, result } = await rollToRest(r, [{ dice: 'd6', set: 'liquid-cube', rolled: 2 }, { dice: 'd6', set: 'liquid-cube', rolled: 5 }, { dice: 'd6', set: 'liquid-cube', rolled: 3 }]);
             expect(batch.dice.map((d) => !!d.model)).toEqual([true, false, false]);
             expect(result.results.map((x) => x.visible)).toEqual([2, 5, 3]);
         });
 
-        it('a design without liquid is not capped: every die rolls as the model', () => {
+        it('a design without liquid is not capped: every die rolls as the model', async () => {
             const r = headlessRoller();
-            const { batch } = rollToRest(r, [{ dice: 'd6', set: 'cube-design' }, { dice: 'd6', set: 'cube-design' }]);
+            const { batch } = await rollToRest(r, [{ dice: 'd6', set: 'cube-design' }, { dice: 'd6', set: 'cube-design' }]);
             expect(batch.dice.map((d) => !!d.model)).toEqual([true, true]);
         });
 

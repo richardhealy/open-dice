@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { D4_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
+import { D4_GEOMETRY, getChamferGeometry, makeGeometry, sharedGeometry } from '../geometry.js';
 import { buildFaceMaterials } from '../sets/face-materials.js';
 
 export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#9b59b6', isSecret = false, decals = null, decalRegistry = null, options = {}) {
@@ -8,9 +8,12 @@ export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 
     const tab = -0.1;
     const af = Math.PI * 7 / 6;
 
-    const vectors = D4_GEOMETRY.vertices.map(v => new THREE.Vector3().fromArray(v).normalize());
-    const chamferGeometry = getChamferGeometry(vectors, D4_GEOMETRY.faces, 0.96);
-    const geometry = makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
+    // Every d4 shares one geometry (geometry.js sharedGeometry); only its materials are its own.
+    const geometry = sharedGeometry(`d4:${size}`, () => {
+        const vectors = D4_GEOMETRY.vertices.map(v => new THREE.Vector3().fromArray(v).normalize());
+        const chamferGeometry = getChamferGeometry(vectors, D4_GEOMETRY.faces, 0.96);
+        return makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
+    });
 
     const d4FaceTexts = [
         [[], [0, 0, 0], [2, 4, 3], [1, 3, 4], [2, 1, 4], [1, 2, 3]],
@@ -45,6 +48,7 @@ export function createD4Mesh(size, targetNumber, foundClosestIndex, diceColor = 
         decals,
         decalRegistry,
         set: options.set,
+        classicTextures: options.classicTextures,
         visible: options.visible !== false,
     });
 

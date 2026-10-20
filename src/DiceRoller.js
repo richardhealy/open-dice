@@ -12,9 +12,21 @@ import { collectSetImages } from './sets/face-materials.js';
 import { collectSetDecalSources } from './sets/decals.js';
 import { setTextureAnisotropy } from './sets/texture-cache.js';
 import { resolvePixelRatio, clampPixelRatioToBuffer } from './pixel-ratio.js';
+import { ClassicTextureCache } from './classic-textures.js';
+import { PLACEHOLDER_MATERIAL } from './sets/face-materials.js';
 import { GRAVITY_Y, SOLVER_ITERATIONS, CONTACT, applyThrow, isDieSettled, trackRestSteps } from './physics-config.js';
+import { describeWorld, readState, STATE_SIZE } from './physics-sim.js';
+import { predict, warmPrediction } from './prediction.js';
 
 const DIE_TYPES = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd100'];
+
+/** Resolves in the browser's next idle period (requestIdleCallback), or after a zero timeout without it. */
+function whenIdle() {
+    return new Promise((resolve) => {
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(() => resolve(), { timeout: 1000 });
+        else setTimeout(resolve, 0);
+    });
+}
 
 // Collisions below this impact speed are too quiet to be audible without distortion.
 // Above ~12 the cap kicks in.
@@ -76,6 +88,21 @@ export class DiceRoller {
         this._rollGeneration = 0;
         this._pendingSetRolls = 0;
         this._destroyed = false;
+        // Roll predictions run one at a time (each sees the dice the one before spawned) and,
+        // with a Web Worker, off the main thread. While one runs, isRolling() is true and the
+        // live world does not step. A table wipe (roll(), reset()) bumps the epoch, and a
+        // prediction that finishes after one is dropped, as if its dice had spawned just before.
+        this._pendingPredictions = 0;
+        this._predictionQueue = Promise.resolve();
+        this._tableEpoch = 0;
+        // The recorded throw being played back (see _replayStep).
+        this._replay = null;
+        // Dice reset() is fading out: off the table but still in the physics world.
+        this._fadingDice = [];
+        // Classic face textures shared by this roller's dice, and those of dice that have left
+        // the table, released once the next batch is built so a repeated roll reuses them.
+        this._classicTextures = new ClassicTextureCache();
+        this._retiredTextures = [];
 
         this.dice = [];
         this.diceBatches = [];
@@ -90,6 +117,7 @@ export class DiceRoller {
 
         this._initScene();
         this._initPhysics();
+        warmPrediction();
 
         this._boundResizeHandler = this._handleResize.bind(this);
         window.addEventListener('resize', this._boundResizeHandler);
@@ -164,6 +192,7 @@ export class DiceRoller {
         this.world.broadphase = new CANNON.NaiveBroadphase();
         this.world.solver.iterations = SOLVER_ITERATIONS;
         trackRestSteps(this.world);
+        this.world.addEventListener('postStep', () => this._replayStep());
 
         this.diceMaterial = new CANNON.Material('dice');
         const floorPhysicsMaterial = new CANNON.Material('floor');
@@ -281,18 +310,14 @@ export class DiceRoller {
     /**
      * Roll dice — clears any existing dice and starts a new roll.
      *
-     * The roll() prediction runs in this.world (the live physics world)
-     * rather than an isolated temp world: a clone of the dice config is
-     * stepped to rest in the live world with the same RNG seeds the
-     * visible spawn will use, the resting face is captured, the invisible
-     * bodies are removed, and the visible dice are then spawned with the
-     * same seeds. Same world + same seeds + same integrator = same
-     * trajectory, so the predicted face is the face that lands up.
-     * Variances are zero by construction on a plain roll() — this is the
-     * v1.1 contract restored.
-     *
-     * addDice() keeps its temp-world prediction because the live world is
-     * occupied by in-flight dice we can't disturb.
+     * The prediction steps an exact copy of the live physics world (same
+     * bodies in the same order, same RNG seeds the visible dice use) to
+     * rest, off the main thread when Web Workers are available, and records
+     * every step. The resting face is captured, the visible dice are spawned
+     * with the target painted on it, and the recording is played back step
+     * by step: the visible dice move exactly as the prediction did, so the
+     * predicted face is the face that lands up. Variances are zero by
+     * construction on a plain roll() — the v1.1 contract.
      *
      * @param {Array<Object>} diceConfig - Array of dice configurations
      * @param {string} diceConfig[].dice - Type of die (d4, d6, d8, d10, d12, d20, d100)
@@ -304,10 +329,10 @@ export class DiceRoller {
         if (this.floor) this.floor.material.opacity = 0.5;
         this.lastTime = undefined;
 
-        // Classic rolls stay synchronous up to the spawn (so isRolling() is true as soon as
-        // roll() returns). Only the first roll that uses a set waits for the font and the
-        // environment map, a few milliseconds once, and a roll with a model die waits until
-        // that model has loaded (or failed), so the prediction and the visible die match.
+        // isRolling() is true as soon as roll() returns. Only the first roll that uses a set
+        // waits for the font and the environment map, a few milliseconds once, and a roll with
+        // a model die waits until that model has loaded (or failed), so the prediction and the
+        // visible die match.
         const generation = ++this._rollGeneration;
         if (this._needsSetAssets(diceConfig)) {
             this._pendingSetRolls++;
@@ -324,10 +349,11 @@ export class DiceRoller {
 
     /** Predict, spawn and resolve one main batch. @private */
     _startRoll(diceConfig) {
-        const { closestIndexes, seeds } = this._preSimulateInLiveWorld(diceConfig);
-
-        return new Promise((resolve) => {
-            this._spawnBatch(diceConfig, 'main', closestIndexes, seeds, (result) => {
+        const epoch = this._tableEpoch;
+        return this._predictAndSpawn(diceConfig, epoch, (prediction) => new Promise((resolve) => {
+            // Rendering starts fresh with the dice, as it did when the prediction blocked.
+            this.lastTime = undefined;
+            this._spawnBatch(diceConfig, 'main', prediction, (result) => {
                 // Pass the full result as a second arg so callers can read variances/results
                 // without breaking the original `total`-only callback signature. Wrapped
                 // in try/catch so a buggy callback can't take down the animate loop.
@@ -338,7 +364,32 @@ export class DiceRoller {
                 resolve(result.total);
             });
             this._ensureAnimating();
+        }));
+    }
+
+    /**
+     * Queue a prediction for `diceConfig` behind any earlier one, then spawn with `spawn`
+     * (which returns the batch's promise). `epoch` is the table the dice are meant for (null:
+     * whatever table is there when the prediction starts). If the table is wiped or the
+     * roller destroyed before the dice spawn, they never do and the promise stays pending,
+     * as a wiped batch's promise always has. A failed prediction rejects.
+     * @private
+     */
+    _predictAndSpawn(diceConfig, epoch, spawn) {
+        this._pendingPredictions++;
+        const task = this._predictionQueue.then(async () => {
+            try {
+                if (this._destroyed || (epoch !== null && epoch !== this._tableEpoch)) return null;
+                const startEpoch = this._tableEpoch;
+                const prediction = await this._predict(diceConfig);
+                if (this._destroyed || startEpoch !== this._tableEpoch) return null;
+                return { done: spawn(prediction) };
+            } finally {
+                this._pendingPredictions--;
+            }
         });
+        this._predictionQueue = task.catch(() => {});
+        return task.then((spawned) => (spawned ? spawned.done : new Promise(() => {})));
     }
 
     /**
@@ -359,7 +410,7 @@ export class DiceRoller {
      * `addDice()` instead.
      */
     isRolling() {
-        return this._pendingSetRolls > 0 || this.diceBatches.some(b => !b.resolved && b.dice.length > 0);
+        return this._pendingSetRolls > 0 || this._pendingPredictions > 0 || this.diceBatches.some(b => !b.resolved && b.dice.length > 0);
     }
 
     /**
@@ -407,6 +458,8 @@ export class DiceRoller {
      * environment map, loads every image the listed sets reference (body, normal and
      * decoration images) and paints every face of every die type for them, so the first
      * roll does no painting and never shows an image's fallback. Optional; rolls work without it.
+     * Only the listed sets are loaded. The painting runs one die type at a time in idle
+     * time (requestIdleCallback, else a timeout), so preloading never holds up the page.
      * @param {string[]} ids
      */
     async preloadSets(ids = []) {
@@ -419,6 +472,8 @@ export class DiceRoller {
             for (const type of DIE_TYPES) {
                 const halves = type === 'd100' ? [true, false] : [true];
                 for (const isFirst of halves) {
+                    await whenIdle();
+                    if (this._destroyed) return;
                     const die = createDie(type, true, isFirst, undefined, undefined, this.diceMaterial, null, null,
                         null, null, null, false, null, this.decalRegistry, { set });
                     dieMaterials(die).forEach((m) => m.dispose());
@@ -471,13 +526,12 @@ export class DiceRoller {
     /**
      * Add dice to a scene that may already contain previously-rolled dice.
      *
-     * Waits for any unresolved batches to settle first, then runs the new
-     * batch's prediction in the live world with the existing settled dice
-     * present (their state is snapshotted and restored around the
-     * prediction so they aren't permanently disturbed). Same world + same
-     * seeds + same integrator as the visible spawn that follows = same
-     * trajectory, so `variances` is empty by construction — equivalent
-     * guarantee to roll() but without wiping the scene.
+     * Waits for any unresolved batches to settle first, then predicts the
+     * new batch in a copy of the live world with the existing dice present,
+     * so the prediction collides with them realistically. The recording
+     * covers the existing dice too, and the playback moves them exactly as
+     * the prediction did, so `variances` is empty by construction —
+     * equivalent guarantee to roll() but without wiping the scene.
      *
      * @param {Array<Object>} diceConfig - Array of dice configurations
      * @returns {Promise<{total: number, variances: Array, results: Array}>}
@@ -492,26 +546,26 @@ export class DiceRoller {
         if (this._needsSetAssets(diceConfig)) await Promise.all([this._ensureSetAssets(), this._ensureModels(diceConfig)]);
         if (this._destroyed) return new Promise(() => {});
 
-        const { closestIndexes, seeds } = this._preSimulateInLiveWorld(diceConfig);
-
-        return new Promise((resolve) => {
-            this._spawnBatch(diceConfig, 'added', closestIndexes, seeds, resolve);
+        return this._predictAndSpawn(diceConfig, null, (prediction) => new Promise((resolve) => {
+            this._spawnBatch(diceConfig, 'added', prediction, resolve);
             this._ensureAnimating();
-        });
+        }));
     }
 
     /**
      * Resolves once every batch currently tracked in `this.diceBatches` is
      * marked resolved (i.e. its dice have all settled and its callback has
-     * fired). No-op when the scene is idle. Polls at 50ms — cheap, and the
-     * typical wait is ~1-2s while live dice come to rest.
+     * fired) and no prediction is in flight (its dice are about to spawn).
+     * No-op when the scene is idle. Polls at 50ms — cheap, and the typical
+     * wait is ~1-2s while live dice come to rest.
      * @private
      */
     _waitForAllBatchesResolved() {
-        if (!this.diceBatches.some(b => !b.resolved)) return Promise.resolve();
+        const busy = () => this._pendingPredictions > 0 || this.diceBatches.some(b => !b.resolved);
+        if (!busy()) return Promise.resolve();
         return new Promise((resolve) => {
             const check = () => {
-                if (!this.diceBatches.some(b => !b.resolved)) resolve();
+                if (!busy()) resolve();
                 else setTimeout(check, 50);
             };
             check();
@@ -530,14 +584,19 @@ export class DiceRoller {
     }
 
     /**
-     * Spawn visible dice into the live world, track as a batch. The caller
-     * supplies pre-computed `closestIndexes` (face index each die will land
-     * on) and `seeds` (RNG seeds used by `_applyDiePhysics` to reproduce
-     * the predicted trajectory).
+     * Spawn visible dice into the live world, track as a batch, and play the
+     * prediction back. `prediction` comes from `_predict`: `closestIndexes`
+     * (face index each die will land on), `seeds` (RNG seeds used by
+     * `_applyDiePhysics` to put each die in its predicted starting state),
+     * and the `recording` of the throw with the dice it covers.
      * @private
      */
-    _spawnBatch(diceConfig, type, closestIndexes, seeds, onResolve) {
+    _spawnBatch(diceConfig, type, prediction, onResolve) {
+        const { closestIndexes, seeds } = prediction;
+        if (prediction.live) this._applyPredictionSideEffects(prediction);
         const batchDice = [];
+        // The replay moves the dice already on the table (recorded first) and these.
+        const replayed = prediction.recorded ? prediction.recorded.slice() : null;
         let cidx = 0;
         // One liquid flask per design and type in a throw; the prediction made the same choice.
         const allowed = modelDiceAllowance(diceConfig, (d) => this._setFor(d));
@@ -551,7 +610,7 @@ export class DiceRoller {
                     this.diceMaterial, this.scene, this.world,
                     diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
                     diceRoll.isSecret, diceRoll.decals, this.decalRegistry,
-                    { set: this._setFor(diceRoll), model: allowed[k] }
+                    { set: this._setFor(diceRoll), model: allowed[k], classicTextures: this._classicTextures }
                 );
                 if (!die) { cidx++; continue; }
 
@@ -563,6 +622,7 @@ export class DiceRoller {
                 this._attachCollisionSound(die);
                 this.dice.push(die);
                 batchDice.push(die);
+                if (replayed && prediction.slots[cidx] != null) replayed[prediction.slots[cidx]] = die;
 
                 // Roll-time effects declared on this die's config (e.g. `fire()`).
                 // They attach at spawn and self-terminate once the die settles + their
@@ -578,105 +638,204 @@ export class DiceRoller {
 
         const batch = { dice: batchDice, type, resolved: false, resolve: onResolve };
         this.diceBatches.push(batch);
+        if (replayed) this._startReplay(prediction.recording, replayed);
+        // The new dice hold the textures they share with the dice that left; the rest go now.
+        this._releaseRetiredTextures();
         return batch;
     }
 
     /**
-     * Pre-simulate in the LIVE world (this.world). Used by both roll() and
-     * addDice(): the visible spawn that follows reuses the same world, the
-     * same RNG seeds, and the same integrator, so the predicted face is the
-     * face that lands up. Variances are zero by construction.
-     *
-     * Any dice already in this.dice (e.g. from a prior addDice batch) are
-     * snapshotted before the prediction and restored after, so the
-     * prediction can collide with them realistically without permanently
-     * disturbing their state.
+     * Free what dice that left the table own on the GPU: their materials (classic, design and
+     * model-die materials, labels, liquid) are disposed now; the classic face textures they
+     * hold are released after the next batch is built (_releaseRetiredTextures), so dice of the
+     * same look reuse them. Nothing shared is disposed: the shared geometry of each die type,
+     * the placeholder material, design and label textures (texture-cache.js) and a model's own
+     * geometry and textures stay. Only call it once the dice are out of the scene.
      * @private
      */
-    _preSimulateInLiveWorld(diceConfig) {
-        // Snapshot existing dice so the prediction's collisions don't
-        // permanently move them. Resolved + settled dice will be at rest
-        // (addDice waits on _waitForAllBatchesResolved before calling
-        // this), so the snapshot captures their final orientation/position
-        // and the restore brings them back to it exactly.
-        const snapshots = this.dice.map(d => ({
-            die: d,
-            position: d.body.position.clone(),
-            quaternion: d.body.quaternion.clone(),
-            velocity: d.body.velocity.clone(),
-            angularVelocity: d.body.angularVelocity.clone(),
-        }));
+    _retireDice(dice) {
+        for (const d of dice) {
+            for (const material of dieMaterials(d)) {
+                if (material === PLACEHOLDER_MATERIAL) continue;
+                if (material.map && this._classicTextures.owns(material.map)) this._retiredTextures.push(material.map);
+                material.dispose();
+            }
+        }
+    }
 
+    /** Drop the retired dice's references to classic textures; a texture no die holds is disposed. @private */
+    _releaseRetiredTextures() {
+        const textures = this._retiredTextures;
+        this._retiredTextures = [];
+        for (const texture of textures) this._classicTextures.release(texture);
+    }
+
+    /**
+     * Predict a throw of `diceConfig`. Hidden prediction dice are built with
+     * the same bodies the visible dice will have and thrown with fresh seeds;
+     * the live world, those bodies and the dice already on the table are
+     * described as plain data (physics-sim.js) and stepped to rest, in a Web
+     * Worker when available, recording every step. Any replay still running
+     * finishes first, so its dice join the description where they are now.
+     * The live world itself is never stepped by a prediction.
+     *
+     * Resolves with `{ closestIndexes, seeds, recording, recorded, slots }`:
+     * `recorded` are the dice already on the table, in recording order, and
+     * `slots[cidx]` is the recording index of the cidx-th new die (null for
+     * a die that could not be built).
+     * @private
+     */
+    _predict(diceConfig) {
+        this._finishReplay();
         const dice = [];
         const seeds = [];
         // One liquid flask per design and type in a throw (models/throw-allowance.js); the
         // visible dice are spawned with the same choice, so each predicts with its own body.
         const allowed = modelDiceAllowance(diceConfig, (d) => this._setFor(d));
-        // Whatever happens below, prediction bodies leave the world and existing dice go back
-        // where they were: a die that fails to build must not leave an invisible body behind.
-        try {
-            diceConfig.forEach((diceRoll, k) => {
-                const repeatCount = diceRoll.dice === 'd100' ? 2 : 1;
-                for (let i = 0; i < repeatCount; i++) {
-                    // Spawn into this.world without adding to the scene — these
-                    // are prediction-only bodies; nothing should be rendered.
-                    // The die's design rides along so a model die predicts with its model's hull,
-                    // the very body the visible die will have.
-                    const die = createDie(
-                        diceRoll.dice, false, i === 0,
-                        diceRoll.rolled, null,
-                        this.diceMaterial, null, this.world,
-                        diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
-                        diceRoll.isSecret, null, null,
-                        { set: this._setFor(diceRoll), model: allowed[k] }
-                    );
-                    const seed = this._generateRandomSeed();
-                    seeds.push(seed);
-                    if (!die) {
-                        dice.push(null);
-                        continue;
-                    }
-                    die.isFirst = !(i > 0 && diceRoll.dice === 'd100');
-                    this._applyDiePhysics(die, seed);
-                    dice.push(die);
+        diceConfig.forEach((diceRoll, k) => {
+            const repeatCount = diceRoll.dice === 'd100' ? 2 : 1;
+            for (let i = 0; i < repeatCount; i++) {
+                // Prediction-only dice: never in the scene nor in the live world.
+                // The die's design rides along so a model die predicts with its model's hull,
+                // the very body the visible die will have.
+                const die = createDie(
+                    diceRoll.dice, false, i === 0,
+                    diceRoll.rolled, null,
+                    this.diceMaterial, null, null,
+                    diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
+                    diceRoll.isSecret, null, null,
+                    { set: this._setFor(diceRoll), model: allowed[k] }
+                );
+                const seed = this._generateRandomSeed();
+                seeds.push(seed);
+                if (!die) {
+                    dice.push(null);
+                    continue;
                 }
-            });
-
-            const maxSteps = 5000;
-            const minSteps = 60;
-            for (let step = 0; step < maxSteps; step++) {
-                this.world.step(1 / 60);
-                if (step < minSteps) continue;
-                const allSettled = dice.every(d => !d || this._isBodySettled(d.body));
-                if (allSettled) break;
+                die.isFirst = !(i > 0 && diceRoll.dice === 'd100');
+                this._applyDiePhysics(die, seed);
+                dice.push(die);
             }
+        });
 
-            const closestIndexes = dice.map(d => {
+        // Bodies already moving in the world: dice on the table (addDice) and dice reset() is
+        // still fading out. With none, the throw is played back from the recording. With any,
+        // the visible dice simulate live in the world, exactly as they always did, and the
+        // prediction only tells which face lands (see _applyPredictionSideEffects).
+        const onTable = this.world.bodies.filter((b) => b.type === CANNON.Body.DYNAMIC);
+        const live = onTable.length > 0;
+        const added = dice.filter(Boolean).map((d) => d.body);
+        const slots = [];
+        let next = onTable.length;
+        for (const d of dice) slots.push(d ? next++ : null);
+        const desc = describeWorld(this.world, {
+            added,
+            record: [...onTable, ...added],
+            watch: added,
+        });
+
+        return predict(desc).then((recording) => {
+            const last = (recording.steps - 1) * recording.bodies * STATE_SIZE;
+            const closestIndexes = dice.map((d, cidx) => {
                 if (!d) return null;
+                readState(d.body, recording.states, last + slots[cidx] * STATE_SIZE);
                 d.mesh.quaternion.copy(d.body.quaternion);
                 return getDieValue(d, this.up)[1];
             });
-            return { closestIndexes, seeds };
-        } finally {
-            // Remove the prediction bodies from the world so they don't
-            // collide with the visible dice we're about to spawn with the
-            // same seeds.
-            for (const d of dice) {
-                if (d && d.body) this.world.removeBody(d.body);
-            }
+            return { closestIndexes, seeds, recording, slots, live, onTable, recorded: live ? null : [] };
+        });
+    }
 
-            // Restore existing dice to their pre-prediction state. They'll
-            // experience the same collisions again when the visible new dice
-            // are spawned with the same seeds, so they end up in the same
-            // final state — preserving determinism for both batches.
-            for (const snap of snapshots) {
-                snap.die.body.position.copy(snap.position);
-                snap.die.body.quaternion.copy(snap.quaternion);
-                snap.die.body.velocity.copy(snap.velocity);
-                snap.die.body.angularVelocity.copy(snap.angularVelocity);
-                snap.die.body.force.setZero();
-                snap.die.body.torque.setZero();
+    /**
+     * A live throw (dice already moving in the world) starts from the world the old in-world
+     * prediction left behind, so the visible dice move exactly as they always did:
+     * - dice on the table were put back where they were, but kept the world inertia and the
+     *   rest count the prediction's last step gave them;
+     * - dice fading out after reset() were not put back: they stay where the prediction
+     *   pushed them, at rest;
+     * - the collisions those dice took during the prediction played their sounds at once.
+     * @private
+     */
+    _applyPredictionSideEffects(prediction) {
+        const { recording, onTable } = prediction;
+        const states = recording.states;
+        const last = (recording.steps - 1) * recording.bodies * STATE_SIZE;
+        const owners = new Map([...this.dice, ...this._fadingDice].map((d) => [d.body, d]));
+        const saved = new CANNON.Quaternion();
+        onTable.forEach((body, i) => {
+            const at = last + i * STATE_SIZE;
+            const die = owners.get(body);
+            if (die && this.dice.includes(die)) {
+                saved.copy(body.quaternion);
+                body.quaternion.set(states[at + 3], states[at + 4], states[at + 5], states[at + 6]);
+                body.updateInertiaWorld();
+                body.quaternion.copy(saved);
+                body.restSteps = states[at + 13];
+            } else {
+                readState(body, states, at);
+                body.updateInertiaWorld();
+                body.force.setZero();
+                body.torque.setZero();
             }
+        });
+        const events = recording.events;
+        for (let e = 0; e < events.length; e += 3) {
+            const body = onTable[events[e + 1]];
+            const die = body ? owners.get(body) : null;
+            if (die && die._lastCollideSound !== undefined) this._playImpact(die, events[e + 2]);
+        }
+    }
+
+    /**
+     * Play a recorded throw: the dice leave the live world and, after every
+     * physics step the live world takes (so pacing, substeps and frame timing
+     * are what they always were), take their next recorded state and play the
+     * collision sounds recorded for that step. `dice[i]` is the die of the
+     * recording's i-th body. @private
+     */
+    _startReplay(recording, dice) {
+        this._finishReplay();
+        for (const d of dice) {
+            if (d && d.body.world) this.world.removeBody(d.body);
+        }
+        this._replay = { recording, dice, cursor: 0, event: 0 };
+        if (recording.steps === 0) this._finishReplay();
+    }
+
+    /** One physics step of the replay (the live world's postStep). @private */
+    _replayStep() {
+        const replay = this._replay;
+        if (!replay) return;
+        const { recording, dice } = replay;
+        const step = replay.cursor++;
+        const base = step * recording.bodies * STATE_SIZE;
+        for (let i = 0; i < dice.length; i++) {
+            if (dice[i]) readState(dice[i].body, recording.states, base + i * STATE_SIZE);
+        }
+        const events = recording.events;
+        while (replay.event < events.length && events[replay.event] === step + 1) {
+            const die = dice[events[replay.event + 1]];
+            if (die) this._playImpact(die, events[replay.event + 2]);
+            replay.event += 3;
+        }
+        if (replay.cursor >= recording.steps) this._finishReplay();
+    }
+
+    /**
+     * End the replay: its dice still on the table rejoin the live world, in
+     * their recorded order and state, and simulate on from there, exactly as
+     * the prediction's world would have. @private
+     */
+    _finishReplay() {
+        const replay = this._replay;
+        if (!replay) return;
+        this._replay = null;
+        for (const d of replay.dice) {
+            if (!d || d.body.world || !this.dice.includes(d)) continue;
+            // The world inertia the last integration step would have left.
+            d.body.updateInertiaWorld();
+            d.body.aabbNeedsUpdate = true;
+            this.world.addBody(d.body);
         }
     }
 
@@ -688,15 +847,19 @@ export class DiceRoller {
     _attachCollisionSound(die) {
         die._lastCollideSound = 0;
         die.body.addEventListener('collide', (event) => {
-            if (this.soundManager.sounds.length === 0) return;
-            const now = performance.now();
-            if (now - die._lastCollideSound < COLLIDE_COOLDOWN_MS) return;
-            const impact = Math.abs(event.contact.getImpactVelocityAlongNormal());
-            if (impact < COLLIDE_MIN_IMPACT) return;
-            die._lastCollideSound = now;
-            const vol = Math.min(1, impact / COLLIDE_MAX_IMPACT);
-            this.soundManager.play(vol);
+            this._playImpact(die, Math.abs(event.contact.getImpactVelocityAlongNormal()));
         });
+    }
+
+    /** The collision sound for one impact of `die` (live, or replayed from a recording). @private */
+    _playImpact(die, impact) {
+        if (this.soundManager.sounds.length === 0) return;
+        const now = performance.now();
+        if (now - die._lastCollideSound < COLLIDE_COOLDOWN_MS) return;
+        if (impact < COLLIDE_MIN_IMPACT) return;
+        die._lastCollideSound = now;
+        const vol = Math.min(1, impact / COLLIDE_MAX_IMPACT);
+        this.soundManager.play(vol);
     }
 
     /** @private */
@@ -733,10 +896,13 @@ export class DiceRoller {
      * @private
      */
     _clearDice() {
+        this._tableEpoch++;
+        this._replay = null;
         this.dice.forEach(d => {
             this.scene.remove(d.mesh);
             this.world.removeBody(d.body);
         });
+        this._retireDice(this.dice);
         this.dice.length = 0;
         this.diceBatches.length = 0;
         // Tear down any active effects — scene-attached ones (haloRing, particles,
@@ -753,9 +919,14 @@ export class DiceRoller {
      */
     reset() {
         return new Promise((resolve) => {
+            // A throw still playing back goes on in the live world while it fades, as it
+            // always has; a prediction still running never spawns.
+            this._finishReplay();
+            this._tableEpoch++;
             const diceToFade = [...this.dice];
             this.dice.length = 0;
             this.diceBatches.length = 0;
+            this._fadingDice.push(...diceToFade);
 
             if (diceToFade.length === 0) {
                 if (this.floor) this.floor.material.opacity = 0;
@@ -796,6 +967,8 @@ export class DiceRoller {
                         this.scene.remove(d.mesh);
                         this.world.removeBody(d.body);
                     });
+                    this._fadingDice = this._fadingDice.filter((d) => !diceToFade.includes(d));
+                    if (!this._destroyed) this._retireDice(diceToFade);
                     this._animationHolds--;
                     resolve();
                 }
@@ -887,7 +1060,9 @@ export class DiceRoller {
         let dt = 0;
         if (this.lastTime !== undefined) {
             dt = (time - this.lastTime) / 1000;
-            this.world.step(1 / 60, dt, 2);
+            // While a prediction runs the table holds still, as it did when the prediction
+            // blocked the page; the dice already there are part of it.
+            if (this._pendingPredictions === 0) this.world.step(1 / 60, dt, 2);
         }
         this.lastTime = time;
 
@@ -923,7 +1098,11 @@ export class DiceRoller {
             this.effects = this.effects.filter(e => !e.update());
         }
 
-        this.renderer.render(this.scene, this.camera);
+        // A roll() empties the table and then waits for its prediction: keep the last frame
+        // (the previous dice) on screen until the new dice spawn, as when the prediction blocked.
+        const holdFrame = this._pendingPredictions > 0 && this.dice.length === 0
+            && this.effects.length === 0 && this._animationHolds === 0;
+        if (!holdFrame) this.renderer.render(this.scene, this.camera);
 
         if (this._shouldIdle()) {
             this.isAnimating = false;
@@ -963,6 +1142,8 @@ export class DiceRoller {
         window.removeEventListener('resize', this._boundResizeHandler);
 
         this._clearDice();
+        this._releaseRetiredTextures();
+        this._classicTextures.clear();
 
         if (this.renderer && this.renderer.domElement && this.renderer.domElement.parentNode) {
             this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);

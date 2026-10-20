@@ -85,7 +85,7 @@ new DiceRoller({
 | `isRolling()` | `boolean` | True if any batch is still unresolved |
 | `setEffectRules(rules)` | `void` | Replace settled-effect rules at runtime |
 | `preloadDecals(srcs)` | `Promise` | Cache decal images before first roll |
-| `preloadSets(ids)` | `Promise<void>` | Load fonts, reflections, images, decals and models of these designs and paint their faces ahead of the first roll |
+| `preloadSets(ids)` | `Promise<void>` | Load fonts, reflections, images, decals and models of these designs and paint their faces ahead of the first roll, one die type per idle period |
 | `setDefaultSet(id)` | `void` | Default design for later rolls; `null` returns to classic |
 | `setThrowSpeed(n)` | `void` | |
 | `setThrowSpin(n)` | `void` | |
@@ -130,7 +130,7 @@ Each entry in the `diceConfig` array passed to `roll()` / `addDice()`:
 }
 ```
 
-**Authoritative vs. visible**: the engine pre-simulates each roll in the live physics world, with the seeds the visible dice then reuse, to determine which face will land up, then paints the target value onto that face. The `total` is always the predetermined sum. If a die gets bumped (e.g. by `addDice()`) and lands on a different face, that's reported as a *variance* but the total is unchanged. This keeps results consistent across clients with different screen aspect ratios.
+**Authoritative vs. visible**: the engine pre-simulates each roll in an exact copy of the live physics world (in a Web Worker when the browser allows, so the page never freezes), with the seeds the visible dice then reuse, to determine which face will land up, then paints the target value onto that face. On a clear table the recorded throw is played back; when other dice are already moving in the world (`addDice()`, or a roll while `reset()` fades dice out) the visible dice simulate live, as they always have. The `total` is always the predetermined sum. If a die gets bumped (e.g. by `addDice()`) and lands on a different face, that's reported as a *variance* but the total is unchanged. This keeps results consistent across clients with different screen aspect ratios.
 
 ---
 
@@ -484,7 +484,7 @@ new DiceRoller({
 });
 ```
 
-Browser autoplay restrictions mean the *first* roll on page load may be silent until the user clicks once.
+Each sound is downloaded once and, after the first click or key press in the page (the browser allows audio only then), decoded and played through Web Audio. Browser autoplay restrictions mean the *first* roll on page load may be silent until the user clicks once. Until audio may start, on iPhone and iPad (where the ringer switch silences Web Audio), and wherever Web Audio is missing or cannot decode a file, sounds play through `<audio>` elements as they always did. Sounds on another origin need CORS headers for Web Audio; without them they still play through `<audio>`.
 
 ---
 
@@ -728,6 +728,15 @@ npm run build
 ---
 
 ## 📝 Changelog
+
+### Unreleased
+
+Performance only: the dice look, move and land exactly as before.
+
+- A roll no longer freezes the page. The throw is predicted in a Web Worker (bundled inline, no extra file) and, on a clear table, the visible dice replay the recorded prediction instead of simulating it a second time. Throws onto dice already moving (`addDice`, or a roll during `reset()`'s fade) simulate live, exactly as before. Without Workers, under a Content Security Policy that blocks `blob:` workers (`worker-src`), or if the worker does not answer within 10 s, the same prediction runs on the main thread as before. Physics settings are unchanged, so old and new versions can share a table.
+- Classic dice share face textures and one geometry per die type, and a die's materials are disposed when it leaves the table: GPU memory no longer grows with every roll, and a repeated roll uploads nothing.
+- Collision sounds play from Web Audio buffers decoded once instead of a new `<audio>` element per collision. The AudioContext starts only after a user gesture (no autoplay warning on load); iPhone and iPad keep `<audio>` elements, which the ringer switch does not silence.
+- `preloadSets()` paints one die type per idle period, so calling it at idle time never holds up the page.
 
 ### [1.11.1] - 2026-10-05
 

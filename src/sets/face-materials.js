@@ -210,28 +210,51 @@ function normalTexture(set, type, decalRegistry) {
     });
 }
 
+/** Everything that changes a classic face's pixels or texture flags, as a cache key. */
+function classicFaceKey(face, colors, isSecret, decals, textOffsetY, textureTuning) {
+    const text = face && face.text !== undefined && face.text !== null ? String(face.text) : '';
+    const values = face && face.values ? face.values.map(String) : null;
+    const decalFor = (k) => (k && decals && decals[k] ? JSON.stringify(decals[k]) : '');
+    return cacheKey([
+        values ? `v:${values.join(',')}` : `t:${text}`,
+        colors.textColor,
+        colors.backgroundColor,
+        isSecret ? 1 : 0,
+        values ? values.map(decalFor).join(';') : decalFor(text),
+        textOffsetY,
+        textureTuning ? JSON.stringify(textureTuning) : '',
+    ]);
+}
+
 /**
- * Classic paints one texture per slot per die, exactly as before dice sets: it is a fill
- * and a fillText, and caching it by colour would pin a texture for every colour pair a
- * table of players ever rolls (review I3).
+ * Classic paints a texture per slot: a fill and a fillText. Without a cache (createDie called
+ * directly) each die gets its own, exactly as before dice sets. A roller passes its
+ * reference-counted ClassicTextureCache (classic-textures.js): dice of the same look share
+ * textures, and the roller releases them when the dice leave, so no texture is pinned for
+ * every colour pair a table of players ever rolls (review I3).
  */
-function buildClassicMaterials({ type, count, faces, colors, isSecret = false, decals = null, decalRegistry = null, textOffsetY = 0, textureTuning }) {
+function buildClassicMaterials({ type, count, faces, colors, isSecret = false, decals = null, decalRegistry = null, textOffsetY = 0, textureTuning, classicTextures = null }) {
     const materials = [];
     for (let i = 0; i < count; i++) {
         const face = faces[i] || null;
-        let texture;
-        if (face && face.values) {
-            texture = createD4FaceTexture({
-                values: face.values, textColor: colors.textColor, backgroundColor: colors.backgroundColor, decals, decalRegistry,
-            });
-        } else {
-            const text = face && face.text !== undefined && face.text !== null ? String(face.text) : '';
-            const decal = (text && decals) ? decals[text] : null;
-            texture = createFaceTexture({
-                text, textColor: colors.textColor, backgroundColor: colors.backgroundColor, decal, decalRegistry, isSecret, textOffsetY,
-            });
-        }
-        applyTuning(texture, textureTuning);
+        const paint = () => {
+            let texture;
+            if (face && face.values) {
+                texture = createD4FaceTexture({
+                    values: face.values, textColor: colors.textColor, backgroundColor: colors.backgroundColor, decals, decalRegistry,
+                });
+            } else {
+                const text = face && face.text !== undefined && face.text !== null ? String(face.text) : '';
+                const decal = (text && decals) ? decals[text] : null;
+                texture = createFaceTexture({
+                    text, textColor: colors.textColor, backgroundColor: colors.backgroundColor, decal, decalRegistry, isSecret, textOffsetY,
+                });
+            }
+            return applyTuning(texture, textureTuning);
+        };
+        const texture = classicTextures
+            ? classicTextures.acquire(classicFaceKey(face, colors, isSecret, decals, textOffsetY, textureTuning), paint)
+            : paint();
         materials.push(new THREE.MeshPhongMaterial({
             specular: 0x172022,
             color: colors.diceColor,
