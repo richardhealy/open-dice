@@ -3,8 +3,8 @@ import { SoundManager, _resetAudioContextForTests } from '../../src/sound-manage
 
 /**
  * D3: collision sounds used to clone an `<audio>` element per collision. They now play from
- * Web Audio buffers decoded once, with the same linear volume, and fall back to the element
- * whenever Web Audio cannot play (blocked before a user gesture, unavailable, undecodable).
+ * Web Audio buffers decoded once, with the same linear volume, and play exactly as before
+ * (a cloned element) until audio may start, on iPhone/iPad, and where Web Audio cannot help.
  */
 
 class FakeAudio {
@@ -30,7 +30,7 @@ class FakeContext {
 }
 
 let fetches;
-function install({ webAudio = true, fetchFails = false } = {}) {
+function install({ webAudio = true, fetchFails = false, userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Chrome/140', platform = 'Linux x86_64', maxTouchPoints = 0, activation = { hasBeenActive: false } } = {}) {
     FakeAudio.created = []; FakeAudio.played = []; FakeAudio.failing = new Set();
     FakeContext.instances = []; FakeContext.initialState = 'running'; FakeContext.undecodable = false;
     fetches = [];
@@ -41,6 +41,7 @@ function install({ webAudio = true, fetchFails = false } = {}) {
         removeEventListener: (type) => { delete listeners[type]; },
         listeners,
     });
+    vi.stubGlobal('navigator', { userAgent, platform, maxTouchPoints, userActivation: activation });
     vi.stubGlobal('Audio', FakeAudio);
     vi.stubGlobal('fetch', async (src) => {
         fetches.push(src);
@@ -50,13 +51,53 @@ function install({ webAudio = true, fetchFails = false } = {}) {
     _resetAudioContextForTests();
 }
 
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** Preload, then a user gesture: the context starts and the sounds decode. */
+async function ready(sm, srcs) {
+    await sm.preload(srcs);
+    window.listeners.pointerdown();
+    await settle();
+    return FakeContext.instances[0];
+}
+
 describe('collision sounds through Web Audio', () => {
     beforeEach(() => install());
-    afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); _resetAudioContextForTests(); });
+    afterEach(() => { _resetAudioContextForTests(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+    it('creates no AudioContext while loading (no autoplay warning) and plays as before until a gesture', async () => {
+        const sm = new SoundManager({ volume: 1 });
+        await sm.preload(['a.ogg']);
+        expect(FakeContext.instances).toEqual([]);
+        sm.play(0.25);
+        expect(FakeContext.instances).toEqual([]);
+        expect(FakeAudio.played).toEqual([{ src: sm.sounds[0].element.src, volume: 0.25 }]);
+        expect(Object.keys(window.listeners).sort()).toEqual(['keydown', 'pointerdown', 'touchend']);
+        window.listeners.pointerdown();
+        await settle();
+        expect(FakeContext.instances.length).toBe(1);
+        expect(window.listeners).toEqual({});   // unlocked: listeners removed
+        sm.play(0.25);
+        expect(FakeContext.instances[0].started.length).toBe(1);
+        expect(FakeAudio.played.length).toBe(1);
+    });
+
+    it('a frame that already had user activation (clicked before the roller loaded) starts audio at the first collision', async () => {
+        install({ activation: { hasBeenActive: true } });
+        const sm = new SoundManager();
+        await sm.preload(['a.ogg']);
+        expect(FakeContext.instances).toEqual([]);
+        sm.play(1);   // this collision still plays through the element while the sound decodes
+        expect(FakeContext.instances.length).toBe(1);
+        expect(FakeAudio.played.length).toBe(1);
+        await settle();
+        sm.play(1);
+        expect(FakeContext.instances[0].started.length).toBe(1);
+    });
 
     it('fetches and decodes each sound once, and plays a collision without cloning an element', async () => {
         const sm = new SoundManager({ volume: 0.8 });
-        await sm.preload(['a.ogg', 'b.ogg', 'c.ogg']);
+        const ctx = await ready(sm, ['a.ogg', 'b.ogg', 'c.ogg']);
         expect(fetches).toEqual(['a.ogg', 'b.ogg', 'c.ogg']);
         expect(sm.sounds.length).toBe(3);
         expect(sm.sounds.every((s) => s.buffer)).toBe(true);
@@ -65,7 +106,6 @@ describe('collision sounds through Web Audio', () => {
         for (let i = 0; i < 20; i++) sm.play(0.5);
         expect(FakeAudio.created.length).toBe(elements);   // no clone per collision
         expect(FakeAudio.played).toEqual([]);
-        const ctx = FakeContext.instances[0];
         expect(ctx.started.length).toBe(20);
         expect(ctx.started[0].buffer).toBe(sm.sounds[1].buffer);   // same random pick as before
         expect(ctx.started[0].gain).toBeCloseTo(0.4, 12);         // volume * impact, linear, as element.volume was
@@ -74,38 +114,34 @@ describe('collision sounds through Web Audio', () => {
 
     it('clamps the gain to [0, 1] exactly as the element volume was clamped', async () => {
         const sm = new SoundManager({ volume: 1 });
-        await sm.preload(['a.ogg']);
+        const ctx = await ready(sm, ['a.ogg']);
         sm.setVolume(3);
         sm.play(1);
         sm.play(-2);
-        expect(FakeContext.instances[0].started.map((s) => s.gain)).toEqual([1, 0]);
+        expect(ctx.started.map((s) => s.gain)).toEqual([1, 0]);
     });
 
     it('muted: plays nothing', async () => {
         const sm = new SoundManager();
-        await sm.preload(['a.ogg']);
+        const ctx = await ready(sm, ['a.ogg']);
         sm.setEnabled(false);
         sm.play(1);
-        expect(FakeContext.instances[0].started).toEqual([]);
+        expect(ctx.started).toEqual([]);
         expect(FakeAudio.played).toEqual([]);
     });
 
-    it('before a user gesture (context suspended): plays the element as before and asks to resume; the first gesture resumes', async () => {
-        FakeContext.initialState = 'suspended';
-        const sm = new SoundManager({ volume: 1 });
-        await sm.preload(['a.ogg']);
-        const ctx = FakeContext.instances[0];
-        const resume = vi.spyOn(ctx, 'resume').mockImplementation(() => new Promise(() => {}));   // still pending
-        sm.play(0.25);
+    it('a context the browser suspends again plays the element and asks to resume', async () => {
+        const sm = new SoundManager();
+        const ctx = await ready(sm, ['a.ogg']);
+        ctx.state = 'suspended';
+        const resume = vi.spyOn(ctx, 'resume').mockImplementation(() => new Promise(() => {}));
+        sm.play(0.5);
         expect(ctx.started).toEqual([]);
-        expect(FakeAudio.played).toEqual([{ src: sm.sounds[0].element.src, volume: 0.25 }]);
+        expect(FakeAudio.played.length).toBe(1);
+        expect(resume).not.toHaveBeenCalled();   // no activation yet: resuming would only warn
+        navigator.userActivation.hasBeenActive = true;
+        sm.play(0.5);
         expect(resume).toHaveBeenCalled();
-        resume.mockRestore();
-        expect(Object.keys(window.listeners).sort()).toEqual(['keydown', 'pointerdown', 'touchend']);
-        window.listeners.pointerdown();
-        expect(ctx.state).toBe('running');
-        sm.play(0.25);
-        expect(ctx.started.length).toBe(1);
     });
 
     it('the element made for the fallback plays the fetched bytes: no second download', async () => {
@@ -114,6 +150,19 @@ describe('collision sounds through Web Audio', () => {
         expect(fetches).toEqual(['a.ogg']);
         expect(sm.sounds[0].element.src.startsWith('blob:')).toBe(true);
     });
+
+    for (const [device, over] of [['iPhone', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari' }], ['iPad', { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Safari', platform: 'MacIntel', maxTouchPoints: 5 }]]) {
+        it(`on ${device}: <audio> elements exactly as before (the ringer switch silences Web Audio)`, async () => {
+            install({ ...over, activation: { hasBeenActive: true } });
+            const sm = new SoundManager({ volume: 0.5 });
+            await sm.preload(['a.ogg']);
+            expect(fetches).toEqual([]);
+            expect(window.listeners).toEqual({});
+            sm.play(1);
+            expect(FakeContext.instances).toEqual([]);
+            expect(FakeAudio.played).toEqual([{ src: 'a.ogg', volume: 0.5 }]);
+        });
+    }
 
     it('without Web Audio: loads and clones <audio> elements exactly as before', async () => {
         install({ webAudio: false });
@@ -131,7 +180,8 @@ describe('collision sounds through Web Audio', () => {
         install({ fetchFails: true });
         const sm = new SoundManager();
         await sm.preload(['https://cdn.example/a.ogg']);
-        expect(sm.sounds).toEqual([{ buffer: null, element: expect.objectContaining({ src: 'https://cdn.example/a.ogg' }) }]);
+        expect(window.listeners).toEqual({});   // nothing for Web Audio to decode: no context, ever
+        expect(sm.sounds).toEqual([{ buffer: null, data: null, element: expect.objectContaining({ src: 'https://cdn.example/a.ogg' }) }]);
         sm.play(1);
         expect(FakeAudio.played.length).toBe(1);
     });
@@ -139,11 +189,11 @@ describe('collision sounds through Web Audio', () => {
     it('a sound Web Audio cannot decode plays through its element', async () => {
         FakeContext.undecodable = true;
         const sm = new SoundManager();
-        await sm.preload(['a.ogg']);
+        const ctx = await ready(sm, ['a.ogg']);
         expect(sm.sounds[0].buffer).toBeNull();
         sm.play(1);
         expect(FakeAudio.played.length).toBe(1);
-        expect(FakeContext.instances[0].started).toEqual([]);
+        expect(ctx.started).toEqual([]);
     });
 
     it('a sound that loads nowhere is dropped with the same warning as before', async () => {
@@ -156,9 +206,12 @@ describe('collision sounds through Web Audio', () => {
         expect(warn).toHaveBeenCalledWith('SoundManager: failed to load "missing.ogg"');
     });
 
-    it('rollers share one AudioContext', async () => {
-        await new SoundManager().preload(['a.ogg']);
-        await new SoundManager().preload(['b.ogg']);
+    it('rollers share one AudioContext, and a roller created after the unlock decodes at once', async () => {
+        await ready(new SoundManager(), ['a.ogg']);
+        const later = new SoundManager();
+        await later.preload(['b.ogg']);
+        await settle();
         expect(FakeContext.instances.length).toBe(1);
+        expect(later.sounds[0].buffer).toBeTruthy();
     });
 });
