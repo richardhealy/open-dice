@@ -95,7 +95,7 @@ describe('DiceRoller first-set-roll gating (C1 / I5)', () => {
     it('destroy() marks the roller destroyed', () => {
         const saved = globalThis.window;
         globalThis.window = { removeEventListener() {} };
-        const r = { isAnimating: true, animationFrameId: null, _boundResizeHandler() {}, _clearDice() {},
+        const r = { isAnimating: true, animationFrameId: null, _boundResizeHandler() {}, _clearDice() {}, _releaseRetiredTextures() {}, _classicTextures: { clear() {} },
             renderer: { dispose() {}, domElement: { parentNode: null } }, _destroyed: false };
         try { proto.destroy.call(r); } finally { globalThis.window = saved; }
         expect(r._destroyed).toBe(true);

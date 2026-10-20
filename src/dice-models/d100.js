@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { D10_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
+import { D10_GEOMETRY, getChamferGeometry, makeGeometry, sharedGeometry } from '../geometry.js';
 import { buildFaceMaterials } from '../sets/face-materials.js';
 
 /** The d100 numerals sit this many texture pixels below the face centre. */
@@ -11,11 +11,14 @@ export function createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, d
     const tab = 0;
     const af = Math.PI * 6 / 5;
 
-    const vectors = D10_GEOMETRY.vertices.map(v => new THREE.Vector3().fromArray(v).normalize());
+    // Every d100 shares one geometry (geometry.js sharedGeometry); only its materials are its own.
+    const geometry = sharedGeometry(`d100:${size}`, () => {
+        const vectors = D10_GEOMETRY.vertices.map(v => new THREE.Vector3().fromArray(v).normalize());
 
-    const chamferGeometry = getChamferGeometry(vectors, D10_GEOMETRY.faces, 0.945);
+        const chamferGeometry = getChamferGeometry(vectors, D10_GEOMETRY.faces, 0.945);
 
-    const geometry = makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
+        return makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
+    });
 
     let faceValues = [];
     if (isFirst) {
@@ -50,6 +53,7 @@ export function createD100Mesh(size, targetNumber, foundClosestIndex, isFirst, d
         decalRegistry,
         textOffsetY: D100_TEXT_OFFSET_Y,
         set: options.set,
+        classicTextures: options.classicTextures,
         visible: options.visible !== false,
     });
 

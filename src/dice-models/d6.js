@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { D6_GEOMETRY, getChamferGeometry, makeGeometry } from '../geometry.js';
+import { D6_GEOMETRY, getChamferGeometry, makeGeometry, sharedGeometry } from '../geometry.js';
 import { buildFaceMaterials } from '../sets/face-materials.js';
 
 export function createD6Mesh(size, targetNumber, foundClosestIndex, diceColor = 0xf0f0f0, textColor = '#FFFFFF', backgroundColor = '#e74c3c', isSecret = false, decals = null, decalRegistry = null, options = {}) {
@@ -7,11 +7,14 @@ export function createD6Mesh(size, targetNumber, foundClosestIndex, diceColor = 
     const tab = 0.1;
     const af = Math.PI / 4;
 
-    const vectors = D6_GEOMETRY.vertices.map(v => new THREE.Vector3().fromArray(v).normalize());
+    // Every d6 shares one geometry (geometry.js sharedGeometry); only its materials are its own.
+    const geometry = sharedGeometry(`d6:${size}`, () => {
+        const vectors = D6_GEOMETRY.vertices.map(v => new THREE.Vector3().fromArray(v).normalize());
 
-    const chamferGeometry = getChamferGeometry(vectors, D6_GEOMETRY.faces, 0.96);
+        const chamferGeometry = getChamferGeometry(vectors, D6_GEOMETRY.faces, 0.96);
 
-    const geometry = makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
+        return makeGeometry(chamferGeometry.vectors, chamferGeometry.faces, radius, tab, af);
+    });
 
     const faceValues = [' ', '0', '1', '2', '3', '4', '5', '6', '7', '8',
     '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20'];
@@ -39,6 +42,7 @@ export function createD6Mesh(size, targetNumber, foundClosestIndex, diceColor = 
         decals,
         decalRegistry,
         set: options.set,
+        classicTextures: options.classicTextures,
         visible: options.visible !== false,
     });
 

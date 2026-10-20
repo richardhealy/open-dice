@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as THREE from 'three';
 import { DiceRoller } from '../../src/DiceRoller.js';
+import { ClassicTextureCache } from '../../src/classic-textures.js';
 import { DecalRegistry } from '../../src/decal-registry.js';
 import { registerDiceSet, _resetRegistryForTests } from '../../src/sets/index.js';
 import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
@@ -24,6 +25,7 @@ function headlessRoller() {
         up: new THREE.Vector3(0, 1, 0), scene: new THREE.Scene(),
         _setAssetsReady: true, _rollGeneration: 0, _pendingSetRolls: 0, _animationHolds: 0, _destroyed: false,
         _pendingPredictions: 0, _predictionQueue: Promise.resolve(), _tableEpoch: 0, _replay: null,
+        _classicTextures: new ClassicTextureCache(), _retiredTextures: [],
     });
     r._initPhysics();
     return r;

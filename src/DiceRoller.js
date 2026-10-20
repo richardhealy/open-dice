@@ -12,6 +12,8 @@ import { collectSetImages } from './sets/face-materials.js';
 import { collectSetDecalSources } from './sets/decals.js';
 import { setTextureAnisotropy } from './sets/texture-cache.js';
 import { resolvePixelRatio, clampPixelRatioToBuffer } from './pixel-ratio.js';
+import { ClassicTextureCache } from './classic-textures.js';
+import { PLACEHOLDER_MATERIAL } from './sets/face-materials.js';
 import { GRAVITY_Y, SOLVER_ITERATIONS, CONTACT, applyThrow, isDieSettled, trackRestSteps } from './physics-config.js';
 import { describeWorld, readState, STATE_SIZE } from './physics-sim.js';
 import { predict, warmPrediction } from './prediction.js';
@@ -87,6 +89,10 @@ export class DiceRoller {
         this._tableEpoch = 0;
         // The recorded throw being played back (see _replayStep).
         this._replay = null;
+        // Classic face textures shared by this roller's dice, and those of dice that have left
+        // the table, released once the next batch is built so a repeated roll reuses them.
+        this._classicTextures = new ClassicTextureCache();
+        this._retiredTextures = [];
 
         this.dice = [];
         this.diceBatches = [];
@@ -589,7 +595,7 @@ export class DiceRoller {
                     this.diceMaterial, this.scene, this.world,
                     diceRoll.diceColor, diceRoll.textColor, diceRoll.backgroundColor,
                     diceRoll.isSecret, diceRoll.decals, this.decalRegistry,
-                    { set: this._setFor(diceRoll), model: allowed[k] }
+                    { set: this._setFor(diceRoll), model: allowed[k], classicTextures: this._classicTextures }
                 );
                 if (!die) { cidx++; continue; }
 
@@ -618,7 +624,35 @@ export class DiceRoller {
         const batch = { dice: batchDice, type, resolved: false, resolve: onResolve };
         this.diceBatches.push(batch);
         if (replayed) this._startReplay(prediction.recording, replayed);
+        // The new dice hold the textures they share with the dice that left; the rest go now.
+        this._releaseRetiredTextures();
         return batch;
+    }
+
+    /**
+     * Free what dice that left the table own on the GPU: their materials (classic, design and
+     * model-die materials, labels, liquid) are disposed now; the classic face textures they
+     * hold are released after the next batch is built (_releaseRetiredTextures), so dice of the
+     * same look reuse them. Nothing shared is disposed: the shared geometry of each die type,
+     * the placeholder material, design and label textures (texture-cache.js) and a model's own
+     * geometry and textures stay. Only call it once the dice are out of the scene.
+     * @private
+     */
+    _retireDice(dice) {
+        for (const d of dice) {
+            for (const material of dieMaterials(d)) {
+                if (material === PLACEHOLDER_MATERIAL) continue;
+                if (material.map && this._classicTextures.owns(material.map)) this._retiredTextures.push(material.map);
+                material.dispose();
+            }
+        }
+    }
+
+    /** Drop the retired dice's references to classic textures; a texture no die holds is disposed. @private */
+    _releaseRetiredTextures() {
+        const textures = this._retiredTextures;
+        this._retiredTextures = [];
+        for (const texture of textures) this._classicTextures.release(texture);
     }
 
     /**
@@ -808,6 +842,7 @@ export class DiceRoller {
             this.scene.remove(d.mesh);
             this.world.removeBody(d.body);
         });
+        this._retireDice(this.dice);
         this.dice.length = 0;
         this.diceBatches.length = 0;
         // Tear down any active effects — scene-attached ones (haloRing, particles,
@@ -871,6 +906,7 @@ export class DiceRoller {
                         this.scene.remove(d.mesh);
                         this.world.removeBody(d.body);
                     });
+                    if (!this._destroyed) this._retireDice(diceToFade);
                     this._animationHolds--;
                     resolve();
                 }
@@ -1040,6 +1076,8 @@ export class DiceRoller {
         window.removeEventListener('resize', this._boundResizeHandler);
 
         this._clearDice();
+        this._releaseRetiredTextures();
+        this._classicTextures.clear();
 
         if (this.renderer && this.renderer.domElement && this.renderer.domElement.parentNode) {
             this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
