@@ -8,6 +8,13 @@ import PredictionWorker from './physics-worker.js?worker&inline';
  * main thread, synchronously, as rolls always did. Both give the same recording.
  */
 
+/**
+ * A prediction the worker has not answered in this long runs on the main thread instead, and
+ * the worker is retired: a hung worker must never leave a roll waiting (isRolling() true) for
+ * good. Far above any real throw (the slowest phones simulate one in a few seconds).
+ */
+export const PREDICTION_TIMEOUT_MS = 10000;
+
 let worker = null;
 let workerFailed = false;
 let nextId = 1;
@@ -24,6 +31,7 @@ function fallBack(reason) {
     // Requests the worker never answered run here instead.
     for (const [id, request] of [...pending]) {
         pending.delete(id);
+        clearTimeout(request.timer);
         runHere(request);
     }
 }
@@ -47,6 +55,7 @@ function ensureWorker() {
         const request = pending.get(id);
         if (!request) return;
         pending.delete(id);
+        clearTimeout(request.timer);
         if (error) runHere(request);   // the main thread reports the error, or succeeds where the worker could not
         else request.resolve(result);
     };
@@ -78,7 +87,11 @@ export function predict(desc) {
         } catch (error) {
             pending.delete(id);
             runHere(request);
+            return;
         }
+        request.timer = setTimeout(() => {
+            if (pending.has(id)) fallBack(`the worker did not answer within ${PREDICTION_TIMEOUT_MS / 1000} s`);
+        }, PREDICTION_TIMEOUT_MS);
     });
 }
 
@@ -87,6 +100,7 @@ export function _setPredictionWorkerFactoryForTests(factory) {
     if (worker) { try { worker.terminate(); } catch { /* ignore */ } }
     worker = null;
     workerFailed = factory === null;
+    for (const request of pending.values()) clearTimeout(request.timer);
     pending.clear();
     if (factory) createWorker = factory;
 }

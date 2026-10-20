@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { predict, warmPrediction, _setPredictionWorkerFactoryForTests } from '../../src/prediction.js';
+import { predict, warmPrediction, _setPredictionWorkerFactoryForTests, PREDICTION_TIMEOUT_MS } from '../../src/prediction.js';
 import { describeWorld, runPrediction } from '../../src/physics-sim.js';
 import { createDie } from '../../src/dice.js';
 import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
@@ -24,6 +24,7 @@ class FakeWorker {
         const clone = structuredClone(desc);
         setTimeout(() => {
             if (this.behaviour === 'error-event') { this.onerror({ message: 'blocked by CSP', preventDefault() {} }); return; }
+            if (this.behaviour === 'hang') return;
             if (this.behaviour === 'error-message') { this.onmessage({ data: { id, error: 'boom' } }); return; }
             const result = runPrediction(clone);
             this.onmessage({ data: { id, result } });
@@ -101,6 +102,36 @@ describe('roll prediction off the main thread', () => {
         try {
             const desc = throwDesc();
             expect((await predict(desc)).steps).toBe(runPrediction(desc).steps);
+        } finally { delete globalThis.Worker; }
+    });
+
+    it('a worker that never answers: the prediction runs on the main thread after the timeout, and later ones stay there', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        _setPredictionWorkerFactoryForTests(() => { const w = new FakeWorker(); w.behaviour = 'hang'; return w; });
+        globalThis.Worker = FakeWorker;
+        vi.useFakeTimers();
+        try {
+            const desc = throwDesc();
+            let result = null;
+            predict(desc).then((r) => { result = r; });
+            await vi.advanceTimersByTimeAsync(PREDICTION_TIMEOUT_MS - 1);
+            expect(result).toBeNull();
+            await vi.advanceTimersByTimeAsync(1);
+            expect(result.steps).toBe(runPrediction(desc).steps);
+            expect(FakeWorker.instances[0].terminated).toBe(true);
+            expect(warn).toHaveBeenCalledWith(expect.stringContaining('did not answer'));
+            expect((await predict(desc)).steps).toBe(result.steps);
+            expect(FakeWorker.instances.length).toBe(1);
+        } finally { vi.useRealTimers(); delete globalThis.Worker; }
+    });
+
+    it('a worker that answers in time leaves no timer behind', async () => {
+        _setPredictionWorkerFactoryForTests(() => new FakeWorker());
+        globalThis.Worker = FakeWorker;
+        const clear = vi.spyOn(globalThis, 'clearTimeout');
+        try {
+            await predict(throwDesc());
+            expect(clear).toHaveBeenCalled();
         } finally { delete globalThis.Worker; }
     });
 
