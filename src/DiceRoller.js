@@ -1048,7 +1048,11 @@ export class DiceRoller {
             this.effects = this.effects.filter(e => !e.update());
         }
 
-        this.renderer.render(this.scene, this.camera);
+        // A roll() empties the table and then waits for its prediction: keep the last frame
+        // (the previous dice) on screen until the new dice spawn, as when the prediction blocked.
+        const holdFrame = this._pendingPredictions > 0 && this.dice.length === 0
+            && this.effects.length === 0 && this._animationHolds === 0;
+        if (!holdFrame) this.renderer.render(this.scene, this.camera);
 
         if (this._shouldIdle()) {
             this.isAnimating = false;

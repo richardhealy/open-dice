@@ -70,6 +70,26 @@ describe('a roll predicted off the main thread', () => {
         expect(die.body.position.almostEquals(before, 0)).toBe(false);
     });
 
+    it('keeps the previous dice on screen until the new roll spawns (no empty frame in between)', async () => {
+        const { r, frame } = drivenRoller();
+        const renders = [];
+        r.renderer = { render: () => renders.push(r.dice.length) };
+        r.roll([{ dice: 'd6' }]);
+        await flush();
+        for (let i = 0; i < 5; i++) frame();
+        const calls = deferPredictions(r);
+        r.roll([{ dice: 'd8' }, { dice: 'd8' }]);
+        renders.length = 0;
+        for (let i = 0; i < 5; i++) frame();
+        expect(renders).toEqual([]);
+        await flush();
+        calls[0].go();
+        await flush();
+        frame();
+        expect(renders.length).toBeGreaterThan(0);
+        expect(renders.every((n) => n === 2)).toBe(true);
+    });
+
     it('a second roll() made while the first is predicting wins: the first never spawns', async () => {
         const { r } = drivenRoller();
         const calls = deferPredictions(r);
