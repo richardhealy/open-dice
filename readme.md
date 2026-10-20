@@ -729,7 +729,7 @@ npm run build
 
 ## 📝 Changelog
 
-### Unreleased
+### [1.12.0] - 2026-10-20
 
 Performance only: the dice look, move and land exactly as before.
 
