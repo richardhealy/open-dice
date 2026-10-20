@@ -12,7 +12,7 @@ export function headlessRoller(over = {}) {
         decalRegistry: new DecalRegistry(), soundManager: { sounds: [], play() {} },
         up: new THREE.Vector3(0, 1, 0), scene: new THREE.Scene(),
         _setAssetsReady: true, _rollGeneration: 0, _pendingSetRolls: 0, _animationHolds: 0, _destroyed: false,
-        _pendingPredictions: 0, _predictionQueue: Promise.resolve(), _tableEpoch: 0, _replay: null,
+        _pendingPredictions: 0, _predictionQueue: Promise.resolve(), _tableEpoch: 0, _replay: null, _fadingDice: [],
         _classicTextures: new ClassicTextureCache(), _retiredTextures: [],
         ...over,
     });

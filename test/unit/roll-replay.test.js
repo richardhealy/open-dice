@@ -152,12 +152,13 @@ describe('a recorded throw replays exactly what the old second simulation showed
         expect(throws).toBe(100);
     }, 120000);
 
-    // The old addDice predicted with the dice on the table, restored their poses and velocities
-    // but not their world inertia (cannon recomputes it every step), so the visible run started
-    // from a slightly different state than the prediction had: over 300 seeded throws 180 drifted
-    // from their prediction and 4 rested on a face other than the painted one (a "variance").
-    // The replay plays the prediction itself: exactly what the old code meant to show.
-    it('addDice with dice on the table: everything moves exactly as the old prediction did', async () => {
+    // A throw onto dice already in the world (addDice, or a roll while reset() fades dice out)
+    // is not played back: the visible dice simulate live, from the world the old in-world
+    // prediction left behind, so they move exactly as they did in 1.11.1. (That world differs
+    // slightly from the one the prediction started from, so such a throw can still land a
+    // face other than the painted one and report a variance, as it always could.)
+    it('addDice with dice on the table: every die moves exactly as in the old visible run', async () => {
+        let drifted = 0;
         for (let seed = 101; seed <= 130; seed++) {
             const first = MIXES[seed % MIXES.length];
             const added = MIXES[(seed + 2) % MIXES.length];
@@ -166,15 +167,64 @@ describe('a recorded throw replays exactly what the old second simulation showed
             const rNew = headlessRoller();
             await newRoll(rNew, first, seedsFor(rNew, first, seed));
             expect(firstDifference(rNew.dice.flatMap((d) => state(d.body)), rOld.dice.flatMap((d) => state(d.body)))).toBe(-1);
-            const old = oldRoll(rOld, added, seedsFor(rOld, added, seed + 1000), { restoreInertia: true });
+            const old = oldRoll(rOld, added, seedsFor(rOld, added, seed + 1000));
             const now = await newRoll(rNew, added, seedsFor(rNew, added, seed + 1000));
             expect(now.closestIndexes).toEqual(old.closestIndexes);
-            // The recording is the old prediction's run, step for step, existing dice included.
-            expectSameSteps(now.live.slice(0, now.steps), old.predicted, `addDice seed ${seed} vs old prediction`);
-            // And, past the recording, the live world carries on as the old one did.
-            expectSameSteps(now.live, old.live, `addDice seed ${seed} vs old visible run with the inertia restored`);
+            expectSameSteps(now.live, old.live, `addDice seed ${seed} vs old visible run`);
+            expect(rNew.dice.map((d) => d.body.restSteps)).toEqual(rOld.dice.map((d) => d.body.restSteps));
+            if (old.live.slice(0, old.predicted.length).some((st, i) => firstDifference(st, old.predicted[i]) !== -1)) drifted++;
+        }
+        // The old quirk is reproduced, not fixed: some of these throws drift from their prediction.
+        expect(drifted).toBeGreaterThan(0);
+    }, 120000);
+
+    it('a roll while reset() fades dice out: the new and the fading dice move as in the old run', async () => {
+        for (let seed = 301; seed <= 315; seed++) {
+            const first = MIXES[seed % MIXES.length];
+            const next = MIXES[(seed + 1) % MIXES.length];
+            const rOld = headlessRoller();
+            oldRoll(rOld, first, seedsFor(rOld, first, seed));
+            const rNew = headlessRoller();
+            await newRoll(rNew, first, seedsFor(rNew, first, seed));
+            // reset(): the dice leave the table but their bodies stay in the world while they fade.
+            const fadingOld = rOld.dice.splice(0);
+            const fadingNew = rNew.dice.splice(0);
+            rNew._fadingDice.push(...fadingNew);
+            const old = oldRoll(rOld, next, seedsFor(rOld, next, seed + 1000));
+            const now = await newRoll(rNew, next, seedsFor(rNew, next, seed + 1000));
+            expect(now.closestIndexes).toEqual(old.closestIndexes);
+            expectSameSteps(now.live, old.live, `fade seed ${seed}: new dice`);
+            expect(firstDifference(fadingNew.flatMap((d) => state(d.body)), fadingOld.flatMap((d) => state(d.body)))).toBe(-1);
         }
     }, 120000);
+
+    it('the sounds the old prediction played for dice on the table still play, once, at the spawn', async () => {
+        const config = [{ dice: 'd20' }, { dice: 'd6' }];
+        const added = [{ dice: 'd12' }, { dice: 'd8' }, { dice: 'd20' }];
+        const now = vi.spyOn(performance, 'now').mockReturnValue(10000);
+        try {
+            const heard = { old: [], now: [] };
+            const rOld = headlessRoller();
+            rOld.soundManager = { sounds: [1], play: (v) => heard.old.push(v) };
+            oldRoll(rOld, config, seedsFor(rOld, config, 9));
+            rOld.dice.forEach((d) => rOld._attachCollisionSound(d));
+            const rNew = headlessRoller();
+            rNew.soundManager = { sounds: [1], play: (v) => heard.now.push(v) };
+            await newRoll(rNew, config, seedsFor(rNew, config, 9));
+            heard.now.length = 0;
+            for (const d of [...rOld.dice, ...rNew.dice]) d._lastCollideSound = 0;
+            // Old: the prediction ran in the live world, so the dice on the table heard it.
+            const seeds = seedsFor(rOld, added, 29);
+            const rOldPredictionSounds = (() => { const before = heard.old.length; oldRoll(rOld, added, seeds); return heard.old.slice(before); })();
+            const queue = seeds.slice();
+            rNew._generateRandomSeed = () => queue.shift();
+            const prediction = await rNew._predict(added);
+            rNew._spawnBatch(added, 'added', prediction, () => {});
+            expect(prediction.live).toBe(true);
+            expect(rOldPredictionSounds.length).toBeGreaterThan(0);   // seed 29: a new die hits one on the table
+            expect(heard.now).toEqual(rOldPredictionSounds);
+        } finally { now.mockRestore(); }
+    });
 
     describe('model dice', () => {
         beforeAll(async () => {

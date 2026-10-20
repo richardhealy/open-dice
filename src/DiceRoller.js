@@ -97,6 +97,8 @@ export class DiceRoller {
         this._tableEpoch = 0;
         // The recorded throw being played back (see _replayStep).
         this._replay = null;
+        // Dice reset() is fading out: off the table but still in the physics world.
+        this._fadingDice = [];
         // Classic face textures shared by this roller's dice, and those of dice that have left
         // the table, released once the next batch is built so a repeated roll reuses them.
         this._classicTextures = new ClassicTextureCache();
@@ -591,6 +593,7 @@ export class DiceRoller {
      */
     _spawnBatch(diceConfig, type, prediction, onResolve) {
         const { closestIndexes, seeds } = prediction;
+        if (prediction.live) this._applyPredictionSideEffects(prediction);
         const batchDice = [];
         // The replay moves the dice already on the table (recorded first) and these.
         const replayed = prediction.recorded ? prediction.recorded.slice() : null;
@@ -715,14 +718,19 @@ export class DiceRoller {
             }
         });
 
-        const recorded = this.dice.slice();
+        // Bodies already moving in the world: dice on the table (addDice) and dice reset() is
+        // still fading out. With none, the throw is played back from the recording. With any,
+        // the visible dice simulate live in the world, exactly as they always did, and the
+        // prediction only tells which face lands (see _applyPredictionSideEffects).
+        const onTable = this.world.bodies.filter((b) => b.type === CANNON.Body.DYNAMIC);
+        const live = onTable.length > 0;
         const added = dice.filter(Boolean).map((d) => d.body);
         const slots = [];
-        let next = recorded.length;
+        let next = onTable.length;
         for (const d of dice) slots.push(d ? next++ : null);
         const desc = describeWorld(this.world, {
             added,
-            record: [...recorded.map((d) => d.body), ...added],
+            record: [...onTable, ...added],
             watch: added,
         });
 
@@ -734,8 +742,48 @@ export class DiceRoller {
                 d.mesh.quaternion.copy(d.body.quaternion);
                 return getDieValue(d, this.up)[1];
             });
-            return { closestIndexes, seeds, recording, recorded, slots };
+            return { closestIndexes, seeds, recording, slots, live, onTable, recorded: live ? null : [] };
         });
+    }
+
+    /**
+     * A live throw (dice already moving in the world) starts from the world the old in-world
+     * prediction left behind, so the visible dice move exactly as they always did:
+     * - dice on the table were put back where they were, but kept the world inertia and the
+     *   rest count the prediction's last step gave them;
+     * - dice fading out after reset() were not put back: they stay where the prediction
+     *   pushed them, at rest;
+     * - the collisions those dice took during the prediction played their sounds at once.
+     * @private
+     */
+    _applyPredictionSideEffects(prediction) {
+        const { recording, onTable } = prediction;
+        const states = recording.states;
+        const last = (recording.steps - 1) * recording.bodies * STATE_SIZE;
+        const owners = new Map([...this.dice, ...this._fadingDice].map((d) => [d.body, d]));
+        const saved = new CANNON.Quaternion();
+        onTable.forEach((body, i) => {
+            const at = last + i * STATE_SIZE;
+            const die = owners.get(body);
+            if (die && this.dice.includes(die)) {
+                saved.copy(body.quaternion);
+                body.quaternion.set(states[at + 3], states[at + 4], states[at + 5], states[at + 6]);
+                body.updateInertiaWorld();
+                body.quaternion.copy(saved);
+                body.restSteps = states[at + 13];
+            } else {
+                readState(body, states, at);
+                body.updateInertiaWorld();
+                body.force.setZero();
+                body.torque.setZero();
+            }
+        });
+        const events = recording.events;
+        for (let e = 0; e < events.length; e += 3) {
+            const body = onTable[events[e + 1]];
+            const die = body ? owners.get(body) : null;
+            if (die && die._lastCollideSound !== undefined) this._playImpact(die, events[e + 2]);
+        }
     }
 
     /**
@@ -878,6 +926,7 @@ export class DiceRoller {
             const diceToFade = [...this.dice];
             this.dice.length = 0;
             this.diceBatches.length = 0;
+            this._fadingDice.push(...diceToFade);
 
             if (diceToFade.length === 0) {
                 if (this.floor) this.floor.material.opacity = 0;
@@ -918,6 +967,7 @@ export class DiceRoller {
                         this.scene.remove(d.mesh);
                         this.world.removeBody(d.body);
                     });
+                    this._fadingDice = this._fadingDice.filter((d) => !diceToFade.includes(d));
                     if (!this._destroyed) this._retireDice(diceToFade);
                     this._animationHolds--;
                     resolve();

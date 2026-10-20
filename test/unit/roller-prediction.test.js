@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { setCanvasFactories } from '../../src/sets/canvas-factory.js';
 import { makeRecordingCanvas } from './helpers/canvas-stub.js';
-import { headlessRoller } from './helpers/roller.js';
+import { headlessRoller, seededRandom } from './helpers/roller.js';
 
 /** A roller whose frames are driven by hand: `frame()` runs one requestAnimationFrame tick 1/60 s later. */
 function drivenRoller() {
@@ -139,6 +139,10 @@ describe('a roll predicted off the main thread', () => {
 
     it('addDice waits for a roll still predicting, then predicts with its dice on the table', async () => {
         const { r, frame } = drivenRoller();
+        // Seeded: a throw onto dice already on the table simulates live, as it always did, and can
+        // (rarely) land another face than the painted one; this seed lands the painted faces.
+        const random = seededRandom(7);
+        r._generateRandomSeed = () => ({ xPos: random(), yPos: random(), zPos: random(), rotAxis: [random(), random(), random()], rotAngle: random(), vel: [random(), random(), random()], angVel: [random(), random(), random()] });
         const rolled = r.roll([{ dice: 'd6', rolled: 4 }]);
         let added = null;
         r.addDice([{ dice: 'd8', rolled: 5 }]).then((res) => { added = res; });
