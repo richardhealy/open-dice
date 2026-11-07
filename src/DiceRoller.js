@@ -12,6 +12,7 @@ import { collectSetImages } from './sets/face-materials.js';
 import { collectSetDecalSources } from './sets/decals.js';
 import { setTextureAnisotropy } from './sets/texture-cache.js';
 import { resolvePixelRatio, clampPixelRatioToBuffer } from './pixel-ratio.js';
+import { rendererOptions, readGpuInfo } from './renderer-options.js';
 import { ClassicTextureCache } from './classic-textures.js';
 import { PLACEHOLDER_MATERIAL } from './sets/face-materials.js';
 import { GRAVITY_Y, SOLVER_ITERATIONS, CONTACT, applyThrow, isDieSettled, trackRestSteps } from './physics-config.js';
@@ -52,7 +53,8 @@ export class DiceRoller {
      * @param {number} [options.throwSpin=20] - Initial throw spin
      * @param {Function} [options.onRollComplete] - Callback when dice settle (main rolls only)
      * @param {string} [options.set] - Default dice set id for every die (see setDefaultSet)
-     * @param {number} [options.pixelRatio] - Canvas pixel ratio; defaults to the device ratio capped at 2. Pass 1 to opt out.
+     * @param {number} [options.pixelRatio] - Canvas pixel ratio; defaults to the device ratio capped at 2. Pass 1 to opt out. Change it later with setPixelRatio().
+     * @param {string} [options.powerPreference] - WebGL power preference: 'high-performance' asks for the faster GPU on machines with two; 'default' or 'low-power' otherwise. Left to the browser when unset.
      */
     constructor(options = {}) {
         if (!options.container) {
@@ -65,6 +67,7 @@ export class DiceRoller {
         this.throwSpeed = options.throwSpeed || 15;
         this.throwSpin = options.throwSpin || 20;
         this._pixelRatioOption = options.pixelRatio;
+        this._powerPreference = options.powerPreference;
         this.pixelRatio = resolvePixelRatio(options.pixelRatio, typeof window !== 'undefined' ? window.devicePixelRatio : 1);
         // Rendering stops while nothing on the table can change (see _shouldIdle); reset()'s fade
         // holds it open because it empties this.dice before the dice have faded.
@@ -146,7 +149,7 @@ export class DiceRoller {
         this.camera.lookAt(0, 0, 0);
         this.camera.updateProjectionMatrix();
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this.renderer = new THREE.WebGLRenderer(rendererOptions({ powerPreference: this._powerPreference }));
         this.pixelRatio = clampPixelRatioToBuffer(this.pixelRatio, this.width, this.height, this.renderer.capabilities.maxTextureSize);
         this.renderer.setPixelRatio(this.pixelRatio);
         this.renderer.setSize(this.width, this.height);
@@ -298,13 +301,47 @@ export class DiceRoller {
         }
 
         // The display may have changed density (window moved between screens, browser zoom).
+        this._applyPixelRatio();
+        this._updatePhysicsWalls(frustumSize, aspect, topBound, bottomBound);
+        // An idle table keeps its last frame; redraw it at the new size.
+        if (!this.isAnimating) this.renderer.render(this.scene, this.camera);
+    }
+
+    /**
+     * Resolve the pixel ratio option against the device ratio and the GPU's buffer limit, and
+     * size the canvas with it.
+     * @private
+     */
+    _applyPixelRatio() {
         const device = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
         this.pixelRatio = clampPixelRatioToBuffer(resolvePixelRatio(this._pixelRatioOption, device), this.width, this.height, this.renderer.capabilities.maxTextureSize);
         this.renderer.setPixelRatio(this.pixelRatio);
         this.renderer.setSize(this.width, this.height);
-        this._updatePhysicsWalls(frustumSize, aspect, topBound, bottomBound);
-        // An idle table keeps its last frame; redraw it at the new size.
+    }
+
+    /**
+     * Change the canvas pixel ratio while the roller runs, for example to draw fewer pixels on
+     * a GPU that cannot keep up. Same rules as the `pixelRatio` option: undefined goes back to
+     * the device ratio capped at 2. Later window resizes keep the new value.
+     * @param {number} [ratio]
+     * @returns {number} The pixel ratio now in use.
+     */
+    setPixelRatio(ratio) {
+        this._pixelRatioOption = ratio;
+        if (!this.renderer) return this.pixelRatio;
+        this._applyPixelRatio();
+        // Resizing the drawing buffer clears it; an idle table redraws its last frame.
         if (!this.isAnimating) this.renderer.render(this.scene, this.camera);
+        return this.pixelRatio;
+    }
+
+    /**
+     * The GPU this roller draws on, and the power preference its WebGL context got. Either is
+     * null when the browser hides it.
+     * @returns {{gpu: string|null, powerPreference: string|null}}
+     */
+    getGpuInfo() {
+        return readGpuInfo(this.renderer?.getContext?.());
     }
 
     /**
