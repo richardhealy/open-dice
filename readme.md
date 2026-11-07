@@ -71,8 +71,11 @@ new DiceRoller({
     effects,             // rule list — see "Settled Effects"
     set,                 // default design id for every die (see Dice designs); omit for classic
     pixelRatio,          // number, default min(devicePixelRatio, 2); pass 1 to opt out
+    powerPreference,     // 'high-performance' | 'low-power' | 'default'; unset = the browser's choice
 })
 ```
+
+`powerPreference: 'high-performance'` asks for the faster GPU on machines with two (Intel MacBook Pros and many Windows laptops have a built-in and a separate graphics chip, and browsers draw on the built-in one by default). On a machine with one GPU it changes nothing. On a laptop it can cost battery while the dice canvas exists.
 
 ### Roll methods
 
@@ -89,6 +92,8 @@ new DiceRoller({
 | `setDefaultSet(id)` | `void` | Default design for later rolls; `null` returns to classic |
 | `setThrowSpeed(n)` | `void` | |
 | `setThrowSpin(n)` | `void` | |
+| `setPixelRatio(ratio)` | `number` (the ratio now in use) | Redraw at a new pixel ratio while running, e.g. fewer pixels on a GPU that cannot keep up. `undefined` returns to the default; window resizes keep it |
+| `getGpuInfo()` | `{gpu, powerPreference}` | The GPU this roller draws on and the power preference its WebGL context got; `null` when the browser hides either |
 | `destroy()` | `void` | Tear down WebGL, listeners, physics |
 
 ### Dice config
@@ -728,6 +733,14 @@ npm run build
 ---
 
 ## 📝 Changelog
+
+### [1.13.0] - 2026-11-07
+
+For hosts whose players' machines struggle to draw the dice. Nothing changes unless you use the new options.
+
+- `powerPreference` constructor option, passed to WebGL. `'high-performance'` draws on the faster GPU of a machine with two.
+- `setPixelRatio(ratio)` changes the canvas pixel ratio while the roller runs, so a host can draw fewer pixels once it sees the dice drawing slowly. Window resizes keep the new ratio.
+- `getGpuInfo()` reports the GPU the roller's own WebGL context draws on and the power preference it got.
 
 ### [1.12.0] - 2026-10-20
 
